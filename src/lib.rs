@@ -6,10 +6,15 @@
 //! tree shape the Dart side produces, deterministically derivable
 //! from the same input.
 
-pub mod schema;
+pub mod eval;
 pub mod parse;
+pub mod schema;
+pub mod value;
 
-pub use parse::{parse_input_overlay, parse_view, ParseError};
-pub use schema::{
-    apply_overlay, OverlayError, ViewSchema,
+pub use eval::{
+    apply_derives, decode, encode, is_visible_given, run_derive,
+    TemplateInterpolator,
 };
+pub use parse::{parse_input_overlay, parse_view, ParseError};
+pub use schema::{apply_overlay, OverlayError, ViewSchema};
+pub use value::{CellValue, Record};

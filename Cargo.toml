@@ -21,6 +21,12 @@ crate-type = ["rlib"]
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 thiserror = "1"
+# Dates / weekdays / ISO formatting — used by derives + codec round-trip.
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+# Jinja-equivalent for template interpolation. Matches the Dart Jinja
+# semantics for `{{ var }}` and `{% if %}` blocks; we register a
+# `round` filter to mirror our custom Dart filter.
+minijinja = { version = "2", default-features = false, features = ["builtins"] }
 
 [dev-dependencies]
 # Tests load actual YAML files via include_str! so changes in the
