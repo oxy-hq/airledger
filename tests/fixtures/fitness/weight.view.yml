@@ -1,0 +1,17 @@
+name: weight
+description: "Body weight + body-fat % log — one row per measurement day"
+datasource: gsheets
+table: weight
+entities:
+  - { name: weight_entry, type: primary, key: id }
+dimensions:
+  - { name: id, type: string, expr: id, description: Unique row identifier (UUID) }
+  - { name: date, type: date, expr: date, description: Measurement day }
+  - { name: day_of_week, type: string, expr: day_of_week }
+  - { name: time, type: string, expr: time, description: "Time of measurement (HH:MM, blank if unknown)" }
+  - { name: weight_lbs, type: number, expr: weight_lbs, description: Body weight (lbs) }
+  - { name: body_fat_caliper, type: number, expr: body_fat_caliper, description: Body fat % from caliper measurement }
+  - { name: body_fat_omron, type: number, expr: body_fat_omron, description: Body fat % from Omron device }
+  - { name: notes, type: string, expr: notes }
+measures:
+  - { name: weigh_in_count, type: count }

@@ -1,0 +1,21 @@
+target: strength.view.yml
+name: "Cut · Deadlift (reentry)"
+description: >
+  Reentry mode — returning from a deload or back issue. One conservative
+  top single 15-20 lb below normal, capped at RPE 8, to confirm readiness
+  before resuming progression. Light backoffs only, no paused work.
+  Warmup ramps 50/65/80/90% of the reentry single.
+variables:
+  - { name: reentry_single, label: "Reentry single (lb)", type: number, default: 320 }
+entries:
+  - { exercise: Barbell Deadlift, weight: 45, reps: 8, notes: "warmup" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((reentry_single * 0.50 / 5) | round) * 5 }}", reps: 5, notes: "warmup" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((reentry_single * 0.65 / 5) | round) * 5 }}", reps: 3, notes: "warmup" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((reentry_single * 0.80 / 5) | round) * 5 }}", reps: 2, notes: "bridge" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((reentry_single * 0.90 / 5) | round) * 5 }}", reps: 1, notes: "bridge" }
+  - { exercise: Barbell Deadlift, weight: "{{ reentry_single }}", reps: 1, notes: "reentry single — belted, cap RPE 8" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((reentry_single * 0.85 / 5) | round) * 5 }}", reps: 3, notes: "backoff" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((reentry_single * 0.85 / 5) | round) * 5 }}", reps: 3, notes: "backoff" }
+  - { exercise: Inverted Row, reps: 12, notes: "AMRAP — edit reps" }
+  - { exercise: Inverted Row, reps: 12, notes: "AMRAP — edit reps" }
+  - { exercise: Inverted Row, reps: 12, notes: "AMRAP — edit reps" }

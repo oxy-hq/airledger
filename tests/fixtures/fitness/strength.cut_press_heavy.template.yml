@@ -1,0 +1,35 @@
+target: strength.view.yml
+name: "Cut · OHP + Bench (heavy)"
+description: >
+  Combined press day. Bench heavy top single + backoff first (fresh),
+  then OHP top single + backoff, then face pulls and rows for posterior
+  shoulder health. Both lifts use the same 50/65/80/90% → top → 85%
+  backoff pattern as the squat/DL templates. Adjust bench_top and
+  ohp_top to your current numbers.
+variables:
+  - { name: bench_top, label: "Bench top single (lb)", type: number, default: 225 }
+  - { name: ohp_top,   label: "OHP top single (lb)",   type: number, default: 145 }
+entries:
+  # Bench
+  - { exercise: Flat Barbell Bench Press, weight: 45, reps: 8, notes: "warmup" }
+  - { exercise: Flat Barbell Bench Press, weight: "{{ ((bench_top * 0.50 / 5) | round) * 5 }}", reps: 5, notes: "warmup" }
+  - { exercise: Flat Barbell Bench Press, weight: "{{ ((bench_top * 0.65 / 5) | round) * 5 }}", reps: 3, notes: "warmup" }
+  - { exercise: Flat Barbell Bench Press, weight: "{{ ((bench_top * 0.80 / 5) | round) * 5 }}", reps: 2, notes: "bridge" }
+  - { exercise: Flat Barbell Bench Press, weight: "{{ ((bench_top * 0.90 / 5) | round) * 5 }}", reps: 1, notes: "bridge" }
+  - { exercise: Flat Barbell Bench Press, weight: "{{ bench_top }}", reps: 1, notes: "bench top single" }
+  - { exercise: Flat Barbell Bench Press, weight: "{{ ((bench_top * 0.85 / 5) | round) * 5 }}", reps: 3, notes: "bench backoff" }
+  # OHP (shoulders pre-warmed from bench)
+  - { exercise: Overhead Press, weight: 45, reps: 5, notes: "warmup" }
+  - { exercise: Overhead Press, weight: "{{ ((ohp_top * 0.50 / 5) | round) * 5 }}", reps: 5, notes: "warmup" }
+  - { exercise: Overhead Press, weight: "{{ ((ohp_top * 0.65 / 5) | round) * 5 }}", reps: 3, notes: "warmup" }
+  - { exercise: Overhead Press, weight: "{{ ((ohp_top * 0.80 / 5) | round) * 5 }}", reps: 2, notes: "bridge" }
+  - { exercise: Overhead Press, weight: "{{ ((ohp_top * 0.90 / 5) | round) * 5 }}", reps: 1, notes: "bridge" }
+  - { exercise: Overhead Press, weight: "{{ ohp_top }}", reps: 1, notes: "OHP top single" }
+  - { exercise: Overhead Press, weight: "{{ ((ohp_top * 0.85 / 5) | round) * 5 }}", reps: 3, notes: "OHP backoff" }
+  # Accessory
+  - { exercise: Cable Face Pull, reps: 15, notes: "AMRAP — edit reps" }
+  - { exercise: Cable Face Pull, reps: 15, notes: "AMRAP — edit reps" }
+  - { exercise: Cable Face Pull, reps: 15, notes: "AMRAP — edit reps" }
+  - { exercise: Seated Cable Row, reps: 10, notes: "AMRAP — edit reps" }
+  - { exercise: Seated Cable Row, reps: 10, notes: "AMRAP — edit reps" }
+  - { exercise: Seated Cable Row, reps: 10, notes: "AMRAP — edit reps" }

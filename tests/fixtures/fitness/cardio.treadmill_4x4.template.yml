@@ -1,0 +1,13 @@
+target: cardio.view.yml
+name: "Treadmill 4×4"
+description: >
+  Norwegian 4×4 protocol on the treadmill. Five-round ramp: warmup at flat
+  fast pace, then four hard intervals at descending speed × steady incline.
+  Logged per interval — Z4/Z5 reach times, total time, and max HR get
+  filled in during the workout via the timer.
+entries:
+  - { type: treadmill, incline: 0,   treadmill_speed: 7.3, notes: "warmup" }
+  - { type: treadmill, incline: 4,   treadmill_speed: 7,   notes: "" }
+  - { type: treadmill, incline: 3.5, treadmill_speed: 6.5, notes: "" }
+  - { type: treadmill, incline: 3.5, treadmill_speed: 6.5, notes: "" }
+  - { type: treadmill, incline: 3,   treadmill_speed: 6,   notes: "" }

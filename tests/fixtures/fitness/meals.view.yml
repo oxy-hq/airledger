@@ -1,0 +1,18 @@
+name: meals
+description: Daily meal log with nutrition and timing
+datasource: gsheets
+table: meals
+entities:
+  - { name: meal_entry, type: primary, key: id }
+dimensions:
+  - { name: id, type: string, expr: id, description: Unique row identifier (UUID) }
+  - { name: eaten_at, type: datetime, expr: eaten_at, description: When the meal was eaten }
+  - { name: meal, type: string, expr: meal, description: What was eaten }
+  - { name: meal_type, type: string, expr: meal_type, description: Meal slot in the day }
+  - { name: calories, type: number, expr: calories }
+  - { name: protein_g, type: number, expr: protein_g, description: Protein in grams }
+  - { name: notes, type: string, expr: notes }
+measures:
+  - { name: meal_count, type: count, description: Number of meals logged }
+  - { name: total_calories, type: sum, expr: calories }
+  - { name: avg_protein_g, type: average, expr: protein_g }

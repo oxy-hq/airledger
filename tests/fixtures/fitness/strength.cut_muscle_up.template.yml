@@ -1,0 +1,28 @@
+target: strength.view.yml
+name: "Cut · Muscle-Up"
+description: >
+  Muscle-up skill day. Banded MU attempts (set `band` to current band),
+  transition negatives for sticking-point work, plus pulling and dipping
+  volume. Quality reps over fatigue — no top single.
+variables:
+  - { name: band, label: "Band level", type: string, default: "Green Band" }
+  - { name: chin_load, label: "Weighted pull-up load (lb)", type: number, default: 25 }
+entries:
+  # Warmup
+  - { exercise: Pull Up, reps: 5, notes: "warmup" }
+  - { exercise: Parallel Bar Triceps Dip, reps: 5, notes: "warmup" }
+  - { exercise: Pull Up, reps: 5, notes: "warmup" }
+  - { exercise: Parallel Bar Triceps Dip, reps: 5, notes: "warmup" }
+  # Skill: banded muscle-ups
+  - { exercise: "Muscle Up {{ band }}", reps: 2, notes: "skill" }
+  - { exercise: "Muscle Up {{ band }}", reps: 2, notes: "skill" }
+  - { exercise: "Muscle Up {{ band }}", reps: 2, notes: "skill" }
+  # Transition negatives
+  - { exercise: Transition Negatives, reps: 3, notes: "controlled through sticking point" }
+  - { exercise: Transition Negatives, reps: 3, notes: "controlled through sticking point" }
+  # Pull volume
+  - { exercise: Weighted Pull Up, weight: "{{ chin_load }}", reps: 5, notes: "" }
+  - { exercise: Weighted Pull Up, weight: "{{ chin_load }}", reps: 5, notes: "" }
+  # Dip volume
+  - { exercise: Parallel Bar Triceps Dip, reps: 8, notes: "AMRAP — edit reps" }
+  - { exercise: Parallel Bar Triceps Dip, reps: 8, notes: "AMRAP — edit reps" }

@@ -1,0 +1,21 @@
+target: strength.view.yml
+name: "Cut · Deadlift (light)"
+description: >
+  Light deadlift — used on heavy-SQ weeks. No top single, 2 working triples
+  at the configured weight (~70-80% of 1RM), RPE 5-6. Spine recovers
+  between heavy DL weeks via this alternation. Also use ad-hoc if back is
+  guarded. Warmup ramps 50/65/80/90% of the working weight → working
+  triples. Same ramp pattern as the heavy/reentry templates.
+variables:
+  - { name: light_weight, label: "Light weight (lb)", type: number, default: 280 }
+entries:
+  - { exercise: Barbell Deadlift, weight: 45,  reps: 8, notes: "warmup" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((light_weight * 0.50 / 5) | round) * 5 }}", reps: 5, notes: "warmup" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((light_weight * 0.65 / 5) | round) * 5 }}", reps: 3, notes: "warmup" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((light_weight * 0.80 / 5) | round) * 5 }}", reps: 2, notes: "bridge" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((light_weight * 0.90 / 5) | round) * 5 }}", reps: 1, notes: "bridge" }
+  - { exercise: Barbell Deadlift, weight: "{{ light_weight }}", reps: 3, notes: "light triple — belted" }
+  - { exercise: Barbell Deadlift, weight: "{{ light_weight }}", reps: 3, notes: "light triple — belted" }
+  - { exercise: Inverted Row, reps: 12, notes: "AMRAP — edit reps" }
+  - { exercise: Inverted Row, reps: 12, notes: "AMRAP — edit reps" }
+  - { exercise: Inverted Row, reps: 12, notes: "AMRAP — edit reps" }

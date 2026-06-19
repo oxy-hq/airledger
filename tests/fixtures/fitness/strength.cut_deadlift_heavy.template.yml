@@ -1,0 +1,23 @@
+target: strength.view.yml
+name: "Cut · Deadlift (heavy)"
+description: >
+  Cut-phase deadlift, normal/heavy mode. Bridged warmup ramp
+  (50/65/80/90% of top_single) → one quality top single (RPE 8-8.5) →
+  2 backoff triples (~13% under) → one paused technique set at the knee →
+  3xAMRAP inverted rows. Confirm back is good before the top single;
+  switch to the light or reentry template if guarded.
+variables:
+  - { name: top_single, label: "Top single (lb)", type: number, default: 340 }
+entries:
+  - { exercise: Barbell Deadlift, weight: 45, reps: 8, notes: "warmup" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((top_single * 0.50 / 5) | round) * 5 }}", reps: 5, notes: "warmup" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((top_single * 0.65 / 5) | round) * 5 }}", reps: 3, notes: "warmup" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((top_single * 0.80 / 5) | round) * 5 }}", reps: 2, notes: "bridge" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((top_single * 0.90 / 5) | round) * 5 }}", reps: 1, notes: "bridge" }
+  - { exercise: Barbell Deadlift, weight: "{{ top_single }}", reps: 1, notes: "top single — belted" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((top_single * 0.87 / 5) | round) * 5 }}", reps: 3, notes: "backoff" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((top_single * 0.87 / 5) | round) * 5 }}", reps: 3, notes: "backoff" }
+  - { exercise: Barbell Deadlift, weight: "{{ ((top_single * 0.75 / 5) | round) * 5 }}", reps: 2, notes: "paused at knee" }
+  - { exercise: Inverted Row, reps: 12, notes: "AMRAP — edit reps" }
+  - { exercise: Inverted Row, reps: 12, notes: "AMRAP — edit reps" }
+  - { exercise: Inverted Row, reps: 12, notes: "AMRAP — edit reps" }

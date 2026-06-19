@@ -1,0 +1,29 @@
+target: meals.view.yml
+icon: utensils
+date_field: eaten_at
+list_display:
+  title: meal
+  subtitle: ${calories} cal • ${meal_type}
+fields:
+  id:
+    editable: false
+  eaten_at:
+    widget: datetime
+    default: now
+    required: true
+  meal:
+    widget: text
+    required: true
+    placeholder: e.g. oatmeal with berries
+  meal_type:
+    widget: dropdown
+    options: [breakfast, lunch, dinner, snack]
+  calories:
+    widget: number
+    required: true
+    min: 0
+  protein_g:
+    widget: number
+    min: 0
+  notes:
+    widget: longtext

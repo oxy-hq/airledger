@@ -1,0 +1,23 @@
+name: shipments
+description: Incoming deliveries — one batch per shipment, N line items per batch
+datasource: gsheets
+table: shipments
+
+entities:
+  - name: shipment_line
+    type: primary
+    key: id
+
+dimensions:
+  - { name: id,         type: string, expr: id, description: Per-row UUID }
+  - { name: shipment_id, type: string, expr: shipment_id, description: Shared UUID across every line item of one shipment. Drives batch grouping in the timeline. }
+  - { name: date,       type: date,   expr: "Date", description: Day the shipment was received }
+  - { name: supplier,   type: string, expr: "Supplier", description: Name of the supplier/distributor }
+  - { name: item,       type: string, expr: "Item", description: Item received }
+  - { name: qty,        type: number, expr: "Qty", description: Quantity received }
+  - { name: unit,       type: string, expr: "Unit" }
+  - { name: notes,      type: string, expr: "Notes" }
+
+measures:
+  - { name: line_count, type: count }
+  - { name: total_qty,  type: sum,   expr: "Qty", description: Total quantity received (group by item for stocking analysis) }

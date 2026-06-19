@@ -1,0 +1,27 @@
+name: sauces
+description: Sauce production log — one row per ingredient pulled per batch
+datasource: gsheets
+table: sauces
+
+entities:
+  - name: sauce_pull
+    type: primary
+    key: id
+
+dimensions:
+  - { name: id,              type: string, expr: id, description: Per-row UUID }
+  - { name: batch_id,        type: string, expr: batch_id, description: Shared UUID across every ingredient row of one batch. Lets the timeline group N rows as one logical entry and lets edit/delete operate on the whole batch. }
+  - { name: date,            type: date,   expr: "Date", description: Day the batch was produced }
+  - { name: sauce,           type: string, expr: "Sauce", description: Which sauce was produced }
+  - { name: batch_qty,       type: number, expr: "Batch Output Qty", description: How much sauce was produced in this batch (repeats on every ingredient row) }
+  - { name: batch_unit,      type: string, expr: "Batch Output Unit" }
+  - { name: ingredient,      type: string, expr: "Ingredient", description: One ingredient consumed }
+  - { name: ingredient_qty,  type: number, expr: "Qty", description: How much of this ingredient was used }
+  - { name: ingredient_unit, type: string, expr: "Unit" }
+  - { name: start_time,      type: string, expr: "Start Time", description: Wall-clock when the batch was started }
+  - { name: end_time,        type: string, expr: "End Time",   description: Wall-clock when the batch was finished — blank while in-progress }
+  - { name: notes,           type: string, expr: "Notes" }
+
+measures:
+  - { name: ingredient_pulls, type: count }
+  - { name: total_qty, type: sum, expr: "Qty", description: Total ingredient quantity pulled (group by ingredient for usage analytics) }

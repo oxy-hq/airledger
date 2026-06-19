@@ -1,0 +1,26 @@
+name: cardio
+description: "4x4 HIIT cardio — one row per interval set"
+datasource: gsheets
+table: "4x4"
+# NOTE: per-view spreadsheet_id override lives in cardio.input.yml
+# (input-layer concern; semantic schema stays portable).
+entities:
+  - { name: cardio_set, type: primary, key: id }
+dimensions:
+  - { name: id, type: string, expr: id }
+  - { name: date, type: date, expr: Date, description: Workout day }
+  - { name: day_of_week, type: string, expr: Day of Week }
+  # Timer up top: drives this whole row. Start stamps the time-of-day,
+  # ladders fill zone fields, Stop fills total_time.
+  - { name: start_time, type: string, expr: Start Time, description: Tap Start to stamp + begin the elapsed timer. }
+  - { name: zone4_reached, type: string, expr: Time Zone 4 Reached, description: Elapsed when you hit Zone 4 (stamped by timer) }
+  - { name: zone5_reached, type: string, expr: Time Zone 5 Reached, description: Elapsed when you hit Zone 5 (stamped by timer) }
+  - { name: total_time, type: string, expr: Total Time, description: Total elapsed (stamped by Stop) }
+  - { name: type, type: string, expr: Type, description: Cardio modality (drives which fields show below) }
+  - { name: incline, type: number, expr: Treadmill Incline, description: Incline (%) }
+  - { name: treadmill_speed, type: number, expr: Treadmill Speed, description: Speed (mph) }
+  - { name: stairmaster_speed, type: number, expr: Stairmaster Speed, description: Level / speed }
+  - { name: max_hr, type: number, expr: Max Heart Rate, description: Max heart rate during this interval }
+  - { name: notes, type: string, expr: Notes }
+measures:
+  - { name: interval_count, type: count }

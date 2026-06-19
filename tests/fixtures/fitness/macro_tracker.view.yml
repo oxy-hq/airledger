@@ -1,0 +1,122 @@
+name: macro_tracker
+description: "Nutrition analysis over the meal log — individual meal entries with calories, protein, and meal timing. Reads the same `meals` tab as the meals tracker."
+datasource: gsheets
+table: meals
+
+entities:
+  - name: nutrition_entry
+    type: primary
+    description: "Individual meal entry in the nutrition log"
+    key: food_entry_id
+
+dimensions:
+  - name: food_entry_id
+    type: string
+    description: "Unique identifier for each meal entry"
+    expr: "id"
+
+  - name: datetime
+    type: datetime
+    description: "When the meal was eaten"
+    expr: "TRY_CAST(eaten_at AS TIMESTAMP)"
+
+  - name: date
+    type: date
+    description: "Date of nutrition entry"
+    expr: "CAST(TRY_CAST(eaten_at AS TIMESTAMP) AS DATE)"
+
+  - name: time
+    type: string
+    description: "Time of day the meal was eaten"
+    expr: "strftime(TRY_CAST(eaten_at AS TIMESTAMP), '%H:%M')"
+    synonyms: ["meal time", "time of day", "when"]
+
+  - name: food_name
+    type: string
+    description: "What was eaten"
+    expr: "meal"
+    synonyms: ["food", "item", "what I ate", "meal item", "meal"]
+
+  - name: meal_type
+    type: string
+    description: "Meal slot in the day"
+    expr: "meal_type"
+    samples: ["breakfast", "lunch", "dinner", "snack"]
+    synonyms: ["meal slot", "meal category"]
+
+  - name: year
+    type: number
+    description: "Year of nutrition entry"
+    expr: "EXTRACT(YEAR FROM TRY_CAST(eaten_at AS TIMESTAMP))"
+
+  - name: month
+    type: date
+    description: "Month start date for aggregation"
+    expr: "DATE_TRUNC('month', CAST(TRY_CAST(eaten_at AS TIMESTAMP) AS DATE))"
+    synonyms: ["year-month", "month"]
+
+  - name: week
+    type: date
+    description: "Week start date (Monday) for aggregation"
+    expr: "DATE_TRUNC('week', CAST(TRY_CAST(eaten_at AS TIMESTAMP) AS DATE))"
+    synonyms: ["week start", "week"]
+
+  - name: day_of_week
+    type: string
+    description: "Day of week name"
+    expr: "DAYNAME(CAST(TRY_CAST(eaten_at AS TIMESTAMP) AS DATE))"
+    synonyms: ["weekday"]
+
+  - name: protein_ratio
+    type: number
+    description: "Percentage of calories from protein"
+    expr: "(TRY_CAST(protein_g AS DOUBLE) * 4.0) / NULLIF(TRY_CAST(calories AS DOUBLE), 0) * 100"
+    synonyms: ["protein percentage", "protein %"]
+
+measures:
+  - name: total_entries
+    type: count
+    description: "Total number of meal entries logged"
+    synonyms: ["entry count", "number of entries", "meal count"]
+
+  - name: total_days
+    type: count_distinct
+    description: "Total number of distinct days tracked"
+    expr: "CAST(TRY_CAST(eaten_at AS TIMESTAMP) AS DATE)"
+    synonyms: ["days tracked", "number of days"]
+
+  - name: unique_foods
+    type: count_distinct
+    description: "Number of distinct meals consumed"
+    expr: "meal"
+    synonyms: ["different foods", "food variety", "unique meals"]
+
+  - name: total_calories
+    type: sum
+    description: "Total calories consumed in kcal"
+    expr: "TRY_CAST(calories AS DOUBLE)"
+    synonyms: ["calories", "calorie intake", "kcal"]
+
+  - name: total_protein
+    type: sum
+    description: "Total protein consumed in grams"
+    expr: "TRY_CAST(protein_g AS DOUBLE)"
+    synonyms: ["protein", "protein intake"]
+
+  - name: avg_entry_calories
+    type: average
+    description: "Average calories per meal entry"
+    expr: "TRY_CAST(calories AS DOUBLE)"
+    synonyms: ["avg calories per item", "avg calories per meal"]
+
+  - name: avg_daily_calories
+    type: custom
+    description: "Average daily caloric intake in kcal"
+    expr: "SUM(TRY_CAST(calories AS DOUBLE)) / NULLIF(COUNT(DISTINCT CAST(TRY_CAST(eaten_at AS TIMESTAMP) AS DATE)), 0)"
+    synonyms: ["daily calories", "calories per day", "avg calories"]
+
+  - name: avg_daily_protein
+    type: custom
+    description: "Average daily protein intake in grams"
+    expr: "SUM(TRY_CAST(protein_g AS DOUBLE)) / NULLIF(COUNT(DISTINCT CAST(TRY_CAST(eaten_at AS TIMESTAMP) AS DATE)), 0)"
+    synonyms: ["daily protein", "protein per day", "avg protein"]

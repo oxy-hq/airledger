@@ -1,0 +1,73 @@
+target: cardio.view.yml
+icon: heart-pulse
+date_field: date
+# Cardio lives on its own spreadsheet (separate from the main
+# strength/weight/meals workbook). Per-view override; default applies
+# to every view that doesn't specify one.
+spreadsheet_id: 1hiDgkewR-z7JCJ1yNkKpCB7klIY0HDGupLscmcUSnhQ
+plannable:
+  log_field: start_time
+  log_format: time_string
+list_display:
+  title: type
+  subtitle: ${total_time} / ${max_hr}bpm
+fields:
+  id:
+    editable: false
+  date:
+    widget: date
+    default: today
+    required: true
+  day_of_week:
+    derive:
+      from: date
+      format: weekday_long
+  type:
+    widget: dropdown
+    required: true
+    options: [treadmill, stairmaster, bike, rower]
+  incline:
+    widget: number
+    min: 0
+    max: 15
+    show_when:
+      type: treadmill
+  treadmill_speed:
+    widget: number
+    min: 0
+    max: 15
+    show_when:
+      type: treadmill
+  stairmaster_speed:
+    widget: number
+    min: 0
+    max: 30
+    show_when:
+      type: stairmaster
+  zone4_reached:
+    widget: text
+    placeholder: 0:01:30
+  zone5_reached:
+    widget: text
+    placeholder: 0:02:45
+  total_time:
+    widget: text
+    placeholder: '4:00'
+    required: true
+  max_hr:
+    widget: number
+    min: 60
+    max: 230
+  start_time:
+    widget: timer
+    placeholder: 3:54:00 PM
+    # Tap "Start" → stamps now + begins live elapsed counter.
+    # Tap a ladder chip → writes elapsed (m:ss / H:MM:SS) into its target.
+    # Tap the Stop (⏸) button → writes elapsed into stop_target and
+    # freezes the timer. Acts as the natural "Done" for the interval.
+    ladders:
+      - { label: "Zone 4 reached", target: zone4_reached }
+      - { label: "Zone 5 reached", target: zone5_reached }
+    stop_target: total_time
+  notes:
+    widget: longtext

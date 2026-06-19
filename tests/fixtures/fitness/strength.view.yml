@@ -1,0 +1,22 @@
+name: strength
+description: Strength set log (modeled after fitness-logger's data layout)
+datasource: gsheets
+table: strength
+entities:
+  - { name: strength_set, type: primary, key: id }
+dimensions:
+  - { name: id, type: string, expr: id }
+  - { name: date, type: date, expr: Date, description: Workout day }
+  - { name: day_of_week, type: string, expr: Day of Week }
+  - { name: exercise, type: string, expr: Exercise, description: Exercise name (free-form; suggestions from history) }
+  - { name: weight, type: number, expr: Weight }
+  - { name: reps, type: number, expr: Reps }
+  - { name: duration, type: number, expr: Duration, description: "Hold/work duration in seconds (used for isometric exercises that don't have a weight/reps notion)" }
+  - { name: start_time, type: string, expr: Start Time, description: Time of day (blank = planned). Tap the clock to stamp now. }
+  - { name: end_time, type: string, expr: End Time, description: "Time the set ended (useful for timed practice like handstand). Tap the clock to stamp now." }
+  - { name: rpe, type: number, expr: RPE, description: Rate of Perceived Exertion (1-10) }
+  - { name: notes, type: string, expr: Notes }
+measures:
+  - { name: set_count, type: count }
+  - { name: total_weight, type: sum, expr: weight }
+  - { name: max_e1rm, type: max, expr: Weight * (1 + Reps / 30.0), description: Best estimated 1RM in the period (Epley) }

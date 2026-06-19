@@ -1,0 +1,83 @@
+target: shipments.view.yml
+date_field: date
+icon: package
+list_display:
+  title: supplier
+  subtitle: "${qty}${unit} ${item}"
+
+# Each shipment is one batch. The line items fan out into N rows sharing
+# one shipment_id; the timeline groups by it and presents one tile per
+# delivery. Edit/delete operate on the whole shipment.
+repeat_group:
+  fields: [item, qty, unit]
+  group_key: shipment_id
+  label: Item
+  min: 1
+
+fields:
+  id:
+    editable: false
+  shipment_id:
+    editable: false
+  date:
+    widget: date
+    default: today
+    required: true
+  supplier:
+    widget: autocomplete
+    required: true
+    placeholder: e.g. Sysco
+  item:
+    widget: autocomplete
+    required: true
+    placeholder: e.g. PH Sriracha Hot Sauce
+    # Reuse the same ingredient palette as sauces so autocomplete works
+    # the same on both screens. Free-form entry still works.
+    options:
+      - PH Sriracha Hot Sauce (4 x 1 Gallon)
+      - PH Sweet Unagi Sauce (4 x 1 gal)
+      - PH Soy Sauce 18L
+      - Poke House Ponzu (18L)
+      - Sesame Oil 20kgs
+      - Mayonnaise (4 x 1 gallon jugs)
+      - Miso Paste (4 x 6.6lb bags)
+      - Red Miso (Ingredient)
+      - PH Sushi Vinegar (18L)
+      - Sesame Seed 10kgs
+      - Almonds, Sliced 25lbs
+      - Almonds, Small Retail TORN & GLASSER
+      - Fried Onions (10kg)
+      - Furikake (30 x 300g bags)
+      - Sushi Ginger (10 x 1kg bags)
+      - Nori Strips (20 x 100g bags)
+      - Ogo Seaweed (10 x 1kg bags)
+      - Hijiki (Case) (10kg bag)
+      - Wakame Seaweed (Case) (12 x 1lb bags)
+      - Seaweed Salad
+      - Onigiri Wrap
+      - Handroll Wrap, Seaweed (10pk)
+      - Panko (10lb bag)
+      - Soy Sauce PACKETS
+      - Spam (8 x 12oz cans)
+      - Sweet Corn (Poke House) (6 cans)
+      - Togarashi (Case) (10 x 500g bags)
+      - Wasabi Packets, (2.5g x 1,000)
+      - Avocado (Case)
+      - Green Onions (Case)
+      - Jalapeño (10lb Case)
+      - Mango
+      - Mixed Greens, Lettuce
+      - Pineapple 6ct
+      - Purple/Red Cabbage 40lb case
+      - Tuna Loin
+  qty:
+    widget: number
+    required: true
+    min: 0
+  unit:
+    widget: dropdown
+    required: true
+    options: [gal, qt, L, ml, oz, lb, kg, g, ea, case]
+    default: case
+  notes:
+    widget: longtext

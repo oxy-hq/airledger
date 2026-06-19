@@ -1,0 +1,27 @@
+[package]
+name = "airledger-engine"
+version = "0.0.1"
+edition = "2021"
+description = "Schema-driven ingest engine — shared business logic for airledger mobile (Flutter FFI) and Oxy customer-app bundles (WASM)"
+license = "Apache-2.0"
+
+# Sibling crate to airlayer. Same pattern: a Rust core compiles to a
+# native lib for Dart FFI and to WASM for the Oxy React SDK. No FFI /
+# WASM glue yet — Phase 1 is the schema model + parser, with the real
+# airledger-fitness + pokehouse-ledger YAMLs as test fixtures.
+
+[lib]
+name = "airledger_engine"
+# Once we add the FFI/WASM bindings, this becomes a cdylib + staticlib
+# + rlib (see airlayer's sdk-dart build-android.sh for the pattern).
+# Phase 1 ships an rlib only.
+crate-type = ["rlib"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+thiserror = "1"
+
+[dev-dependencies]
+# Tests load actual YAML files via include_str! so changes in the
+# schema repos are caught on `cargo test`.

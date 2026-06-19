@@ -1,0 +1,35 @@
+target: strength.view.yml
+name: "Mobility + Climbing Prep"
+description: >
+  Mobility/warmup ramp into a short progressive-overload accessory bucket
+  for climbing-relevant pulling, rotation, and grip. Mobility block
+  diagnoses + primes overhead and thoracic position; strength block is
+  what to actually track for adaptation over time. Wall Slides flagged as
+  the highest-value diagnostic — quality > quantity.
+entries:
+  # ── Mobility / prep ──────────────────────────────────────────────────
+  - { exercise: Thoracic Extension (Foam Roller), duration: 150, notes: "2–3 min — thoracic mobility, overhead position" }
+  - { exercise: Open Books, reps: 8, notes: "L side — thoracic rotation" }
+  - { exercise: Open Books, reps: 8, notes: "R side" }
+  - { exercise: Lat Stretch, duration: 30, notes: "L side — overhead mobility, reduce lat dominance" }
+  - { exercise: Lat Stretch, duration: 30, notes: "R side" }
+  - { exercise: Chin Tucks, reps: 10, notes: "deep neck flexor coordination" }
+  - { exercise: Chin Tucks, reps: 10, notes: "" }
+  - { exercise: Wall Slides, reps: 8, notes: "diagnostic — quality over fatigue" }
+  - { exercise: Wall Slides, reps: 8, notes: "" }
+  - { exercise: Wall Slides, reps: 8, notes: "" }
+  - { exercise: Serratus Wall Slides, reps: 10, notes: "serratus activation, upward rotation" }
+  - { exercise: Serratus Wall Slides, reps: 10, notes: "" }
+  # ── Strength accessories (progressive overload) ─────────────────────
+  - { exercise: Cable Face Pull, reps: 15, notes: "" }
+  - { exercise: Cable Face Pull, reps: 15, notes: "" }
+  - { exercise: Cable Face Pull, reps: 15, notes: "" }
+  - { exercise: Cable External Rotation, reps: 12, notes: "" }
+  - { exercise: Cable External Rotation, reps: 12, notes: "" }
+  - { exercise: Cable External Rotation, reps: 12, notes: "" }
+  - { exercise: Trap-3 Raise, reps: 8, notes: "" }
+  - { exercise: Trap-3 Raise, reps: 8, notes: "" }
+  - { exercise: Trap-3 Raise, reps: 8, notes: "" }
+  - { exercise: Farmer Carry, duration: 45, notes: "" }
+  - { exercise: Farmer Carry, duration: 45, notes: "" }
+  - { exercise: Farmer Carry, duration: 45, notes: "" }

@@ -1,0 +1,159 @@
+name: body_composition
+description: "Body composition analysis over the weight log — weight, body fat percentage (caliper + Omron), lean mass, and trend/caloric-balance estimates for monitoring composition over time. Reads the same `weight` tab as the weight tracker."
+datasource: gsheets
+table: weight
+
+entities:
+  - name: measurement
+    type: primary
+    description: "Individual body composition measurement"
+    key: measurement_id
+
+dimensions:
+  - name: measurement_id
+    type: string
+    description: "Unique identifier for each measurement"
+    expr: "id"
+
+  - name: date
+    type: date
+    description: "Date of measurement"
+    expr: "CAST(date AS DATE)"
+
+  - name: time
+    type: string
+    description: "Time of measurement (HH:MM, blank if unknown)"
+    expr: "time"
+
+  - name: year
+    type: number
+    description: "Year of measurement"
+    expr: "EXTRACT(YEAR FROM CAST(date AS DATE))"
+
+  - name: month
+    type: date
+    description: "Month start date for aggregation"
+    expr: "DATE_TRUNC('month', CAST(date AS DATE))"
+    synonyms: ["year-month", "month"]
+
+  - name: week
+    type: date
+    description: "Week start date (Monday) for aggregation"
+    expr: "DATE_TRUNC('week', CAST(date AS DATE))"
+    synonyms: ["week start", "week"]
+
+  - name: day_of_week
+    type: string
+    description: "Day of week name"
+    expr: "day_of_week"
+    synonyms: ["weekday"]
+
+  - name: notes
+    type: string
+    description: "Measurement notes"
+    expr: "notes"
+
+measures:
+  - name: total_measurements
+    type: count
+    description: "Total number of body composition measurements"
+
+  - name: avg_weight
+    type: average
+    description: "Average body weight in pounds"
+    expr: "weight_lbs"
+    synonyms: ["mean weight", "weight", "bodyweight", "body weight"]
+
+  - name: avg_body_fat
+    type: average
+    description: "Average body fat percentage from Omron device (only non-null measurements)"
+    expr: "body_fat_omron"
+    synonyms: ["mean body fat", "body_fat", "body fat", "bf%", "body fat percentage"]
+
+  - name: avg_body_fat_caliper
+    type: average
+    description: "Average body fat percentage from caliper measurement (only non-null measurements)"
+    expr: "TRY_CAST(body_fat_caliper AS DOUBLE)"
+    synonyms: ["caliper body fat", "caliper bf%"]
+
+  - name: avg_lean_mass
+    type: average
+    description: "Average lean body mass (only for dates with Omron body fat measurements)"
+    expr: "weight_lbs * (1 - body_fat_omron / 100.0)"
+    filters:
+      - expr: "body_fat_omron IS NOT NULL"
+    synonyms: ["mean lean mass", "average muscle mass", "lean_mass", "lean mass", "lbm"]
+
+  - name: avg_fat_mass
+    type: average
+    description: "Average fat mass (only for dates with Omron body fat measurements)"
+    expr: "weight_lbs * (body_fat_omron / 100.0)"
+    filters:
+      - expr: "body_fat_omron IS NOT NULL"
+    synonyms: ["fat_mass", "fat mass"]
+
+  - name: min_weight
+    type: min
+    description: "Minimum weight in period"
+    expr: "weight_lbs"
+
+  - name: max_weight
+    type: max
+    description: "Maximum weight in period"
+    expr: "weight_lbs"
+
+  - name: min_body_fat
+    type: min
+    description: "Minimum Omron body fat % in period"
+    expr: "body_fat_omron"
+
+  - name: max_body_fat
+    type: max
+    description: "Maximum Omron body fat % in period"
+    expr: "body_fat_omron"
+
+  - name: weight_variance
+    type: custom
+    description: "Standard deviation of weight measurements"
+    expr: "STDDEV_SAMP(weight_lbs)"
+
+  - name: body_fat_variance
+    type: custom
+    description: "Standard deviation of Omron body fat measurements (only non-null)"
+    expr: "STDDEV_SAMP(body_fat_omron)"
+
+  - name: weight_change
+    type: custom
+    description: "Directional weight change (last minus first). Positive = gaining, negative = losing. Requires an aggregated time dimension (week, month, etc.) to be meaningful"
+    expr: "LAST(weight_lbs ORDER BY CAST(date AS DATE)) - FIRST(weight_lbs ORDER BY CAST(date AS DATE))"
+    synonyms: ["weight difference", "total weight change", "weight delta"]
+
+  - name: weight_trend_slope
+    type: custom
+    description: "Daily rate of weight change (lbs/day). Positive = gaining, negative = losing, near zero = maintaining. Bulk ≈ > +0.035/day (0.25 lbs/week), Cut ≈ < -0.035/day. Requires an aggregated time dimension (week, month, etc.) to be meaningful"
+    expr: "CASE WHEN COUNT(weight_lbs) >= 3 THEN REGR_SLOPE(weight_lbs, EXTRACT(EPOCH FROM CAST(date AS TIMESTAMP)) / 86400) END"
+    synonyms: ["weight trend", "weight trajectory", "daily weight change rate"]
+
+  - name: avg_weekly_weight_change
+    type: custom
+    description: "Average weekly weight change rate. Positive = gaining (> +0.25 ≈ bulking), negative = losing (< -0.25 ≈ cutting). Requires an aggregated time dimension (week, month, etc.) to be meaningful"
+    expr: |
+      (LAST(weight_lbs ORDER BY CAST(date AS DATE)) - FIRST(weight_lbs ORDER BY CAST(date AS DATE))) /
+      NULLIF(MAX(CAST(date AS DATE)) - MIN(CAST(date AS DATE)), 0) * 7
+    synonyms: ["weekly weight change", "weight change per week", "weekly weight rate"]
+
+  - name: estimated_daily_caloric_balance
+    type: custom
+    description: "Estimated daily caloric surplus/deficit based on weight change (3500 cal = 1 lb). Requires an aggregated time dimension (week, month, etc.) to be meaningful"
+    expr: |
+      ((LAST(weight_lbs ORDER BY CAST(date AS DATE)) - FIRST(weight_lbs ORDER BY CAST(date AS DATE))) * 3500) /
+      NULLIF(MAX(CAST(date AS DATE)) - MIN(CAST(date AS DATE)), 0)
+    synonyms: ["daily caloric balance", "caloric surplus", "caloric deficit", "daily calories"]
+
+  - name: estimated_weekly_caloric_balance
+    type: custom
+    description: "Estimated weekly caloric surplus/deficit based on weight change (3500 cal = 1 lb). Requires an aggregated time dimension (week, month, etc.) to be meaningful"
+    expr: |
+      ((LAST(weight_lbs ORDER BY CAST(date AS DATE)) - FIRST(weight_lbs ORDER BY CAST(date AS DATE))) * 3500) /
+      NULLIF(MAX(CAST(date AS DATE)) - MIN(CAST(date AS DATE)), 0) * 7
+    synonyms: ["weekly caloric balance", "weekly caloric surplus", "weekly caloric deficit", "weekly calories"]

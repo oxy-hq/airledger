@@ -1,0 +1,105 @@
+name: inventory
+description: SKU catalog — items pulled from inventory or sold. Mirrors QuickBooks.
+datasource: gsheets
+table: inventory
+
+entities:
+  - name: sku
+    type: primary
+    key: id
+
+dimensions:
+  - name: id
+    type: string
+    expr: id
+    input:
+      editable: false
+
+  - name: name
+    type: string
+    expr: "Name"
+    description: Display name (the SKU)
+    input:
+      widget: text
+      required: true
+
+  - name: description
+    type: string
+    expr: "Description"
+    description: Sales description (often longer than name)
+    input:
+      widget: longtext
+
+  - name: qty
+    type: number
+    expr: "Qty On Hand"
+    description: Current on-hand quantity (snapshot — synced from QB manually)
+    input:
+      widget: number
+
+  - name: status
+    type: string
+    expr: "Status"
+    description: '"Out", "Low", or blank'
+    input:
+      widget: dropdown
+      options: [Out, Low, ""]
+
+  - name: cost_group
+    type: string
+    expr: "Cost Group"
+    description: QuickBooks cost group
+    input:
+      widget: dropdown
+      required: true
+      options:
+        - Uniforms
+        - Store Supplies
+        - Packaging
+        - Sauces
+        - Food Product
+        - Produce
+        - Seafood
+        - Drinks
+        - Catering
+        - Fees & Reimbursements
+        - Uncategorized
+        - Credit Memo
+
+  - name: type
+    type: string
+    expr: "Type"
+    description: QuickBooks item type
+    input:
+      widget: dropdown
+      required: true
+      options: [Inventory, Service, Non-Inventory]
+      default: Inventory
+
+  - name: price
+    type: number
+    expr: "Price"
+    description: Sell price (per unit)
+    input:
+      widget: number
+      min: 0
+
+  - name: cost
+    type: number
+    expr: "Cost"
+    description: Cost basis (per unit)
+    input:
+      widget: number
+      min: 0
+
+list_display:
+  title: name
+  subtitle: "${qty} on hand · ${cost_group}"
+
+measures:
+  - name: sku_count
+    type: count
+  - name: total_qty
+    type: sum
+    expr: "Qty On Hand"
+    description: Total units across listed inventory

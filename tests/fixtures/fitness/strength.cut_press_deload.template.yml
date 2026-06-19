@@ -1,0 +1,26 @@
+target: strength.view.yml
+name: "Cut · OHP + Bench (deload)"
+description: >
+  Combined press deload — no top singles. 2 working sets each of bench
+  and OHP at the deload weight (~70-80% of 1RM), RPE 5-6. Use when
+  fatigued or recovering. Warmup ramps 50/65/80% of the working weight
+  for each lift (skip 90% bridge — going to a working set, not a top
+  single).
+variables:
+  - { name: bench_deload, label: "Bench deload (lb)", type: number, default: 170 }
+  - { name: ohp_deload,   label: "OHP deload (lb)",   type: number, default: 110 }
+entries:
+  # Bench
+  - { exercise: Flat Barbell Bench Press, weight: 45, reps: 5, notes: "warmup" }
+  - { exercise: Flat Barbell Bench Press, weight: "{{ ((bench_deload * 0.50 / 5) | round) * 5 }}", reps: 5, notes: "warmup" }
+  - { exercise: Flat Barbell Bench Press, weight: "{{ ((bench_deload * 0.65 / 5) | round) * 5 }}", reps: 3, notes: "warmup" }
+  - { exercise: Flat Barbell Bench Press, weight: "{{ ((bench_deload * 0.80 / 5) | round) * 5 }}", reps: 2, notes: "bridge" }
+  - { exercise: Flat Barbell Bench Press, weight: "{{ bench_deload }}", reps: 5, notes: "deload" }
+  - { exercise: Flat Barbell Bench Press, weight: "{{ bench_deload }}", reps: 5, notes: "deload" }
+  # OHP
+  - { exercise: Overhead Press, weight: 45, reps: 5, notes: "warmup" }
+  - { exercise: Overhead Press, weight: "{{ ((ohp_deload * 0.50 / 5) | round) * 5 }}", reps: 5, notes: "warmup" }
+  - { exercise: Overhead Press, weight: "{{ ((ohp_deload * 0.65 / 5) | round) * 5 }}", reps: 3, notes: "warmup" }
+  - { exercise: Overhead Press, weight: "{{ ((ohp_deload * 0.80 / 5) | round) * 5 }}", reps: 2, notes: "bridge" }
+  - { exercise: Overhead Press, weight: "{{ ohp_deload }}", reps: 5, notes: "deload" }
+  - { exercise: Overhead Press, weight: "{{ ohp_deload }}", reps: 5, notes: "deload" }

@@ -1,0 +1,193 @@
+name: four_by_four
+description: "Norwegian 4x4 protocol analysis over the cardio log. Monitors treadmill and stairmaster sessions with intervals designed to improve cardiovascular capacity and aerobic fitness for longevity. Reads the same `cardio` tab as the cardio tracker."
+datasource: gsheets
+table: cardio
+
+entities:
+  - name: vo2_interval
+    type: primary
+    description: "Individual 4-minute interval effort within a 4x4 workout"
+    key: session_id
+
+dimensions:
+  - name: session_id
+    type: string
+    description: "Unique identifier for each interval set"
+    expr: "id"
+
+  - name: date
+    type: date
+    description: "Date of VO2 max session"
+    expr: "CAST(Date AS DATE)"
+
+  - name: year
+    type: number
+    description: "Year of session"
+    expr: "EXTRACT(YEAR FROM CAST(Date AS DATE))"
+
+  - name: month
+    type: date
+    description: "Month start date for aggregation"
+    expr: "DATE_TRUNC('month', CAST(Date AS DATE))"
+    synonyms: ["year-month", "month"]
+
+  - name: week
+    type: date
+    description: "Week start date (Monday) for aggregation"
+    expr: "DATE_TRUNC('week', CAST(Date AS DATE))"
+    synonyms: ["week start", "week"]
+
+  - name: day_of_week
+    type: string
+    description: "Day of week name"
+    expr: "\"Day of Week\""
+    synonyms: ["weekday"]
+
+  - name: treadmill_speed
+    type: number
+    description: "Treadmill speed in miles per hour"
+    expr: "\"Treadmill Speed\""
+    synonyms: ["speed", "mph"]
+
+  - name: treadmill_incline
+    type: number
+    description: "Treadmill incline percentage"
+    expr: "\"Treadmill Incline\""
+    synonyms: ["incline", "grade"]
+
+  - name: stairmaster_speed
+    type: number
+    description: "Stairmaster speed setting (for stairmaster sessions)"
+    expr: "TRY_CAST(\"Stairmaster Speed\" AS DOUBLE)"
+    synonyms: ["stair speed"]
+
+  - name: zone_4_reached
+    type: string
+    description: "Elapsed time when heart rate zone 4 was first reached (blank = never reached)"
+    expr: "CAST(\"Time Zone 4 Reached\" AS VARCHAR)"
+    synonyms: ["zone 4", "zone 4 time"]
+
+  - name: zone_5_reached
+    type: string
+    description: "Elapsed time when heart rate zone 5 was first reached (blank = never reached)"
+    expr: "CAST(\"Time Zone 5 Reached\" AS VARCHAR)"
+    synonyms: ["zone 5", "max zone reached"]
+
+  - name: workout_type
+    type: string
+    description: "Cardio modality used for the interval"
+    expr: "Type"
+    samples: ["treadmill", "stairmaster", "bike", "rower"]
+    synonyms: ["equipment", "modality", "type"]
+
+  - name: total_time
+    type: string
+    description: "Total interval time (mm:ss)"
+    expr: "\"Total Time\""
+    synonyms: ["duration", "workout time"]
+
+  - name: max_heart_rate
+    type: number
+    description: "Maximum heart rate during interval"
+    expr: "\"Max Heart Rate\""
+    synonyms: ["max hr", "peak heart rate"]
+
+  - name: notes
+    type: string
+    description: "Session notes and observations"
+    expr: "Notes"
+
+measures:
+  - name: total_intervals
+    type: count
+    description: "Total number of 4-minute interval efforts"
+    synonyms: ["interval count", "effort count", "total_sessions"]
+
+  - name: training_frequency
+    type: count_distinct
+    description: "Number of unique training days"
+    expr: "Date"
+    synonyms: ["days trained"]
+
+  - name: avg_speed
+    type: average
+    description: "Average treadmill speed across intervals"
+    expr: "\"Treadmill Speed\""
+    synonyms: ["mean speed"]
+
+  - name: max_speed
+    type: max
+    description: "Maximum treadmill speed achieved"
+    expr: "\"Treadmill Speed\""
+
+  - name: min_speed
+    type: min
+    description: "Minimum treadmill speed"
+    expr: "\"Treadmill Speed\""
+
+  - name: avg_incline
+    type: average
+    description: "Average treadmill incline"
+    expr: "\"Treadmill Incline\""
+    synonyms: ["mean incline"]
+
+  - name: max_incline
+    type: max
+    description: "Maximum treadmill incline achieved"
+    expr: "\"Treadmill Incline\""
+
+  - name: avg_max_heart_rate
+    type: average
+    description: "Average max heart rate across intervals"
+    expr: "\"Max Heart Rate\""
+    synonyms: ["mean max hr"]
+
+  - name: avg_stairmaster_speed
+    type: average
+    description: "Average stairmaster speed across stairmaster intervals"
+    expr: "TRY_CAST(\"Stairmaster Speed\" AS DOUBLE)"
+
+  - name: zone_5_success_rate
+    type: custom
+    description: "Percentage of intervals reaching zone 5 (blank = never reached)"
+    expr: "COUNT(CASE WHEN \"Time Zone 5 Reached\" IS NOT NULL AND CAST(\"Time Zone 5 Reached\" AS VARCHAR) != '' THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0)"
+    synonyms: ["zone 5 rate", "VO2 max achievement rate"]
+
+  - name: intervals_reaching_zone_5
+    type: count
+    description: "Number of intervals that reached zone 5"
+    filters:
+      - expr: "\"Time Zone 5 Reached\" IS NOT NULL AND CAST(\"Time Zone 5 Reached\" AS VARCHAR) != ''"
+
+  - name: total_time_in_zone_5_minutes
+    type: custom
+    description: "Total minutes spent in zone 5 across all intervals (Total Time - Time Zone 5 Reached, summed). Use with a time dimension (week, month) to see total zone 5 volume per period"
+    expr: |
+      SUM(
+        CASE
+          WHEN "Time Zone 5 Reached" IS NOT NULL
+            AND CAST("Time Zone 5 Reached" AS VARCHAR) != ''
+          THEN CAST((EXTRACT(EPOCH FROM CAST("Total Time" AS TIME)) - EXTRACT(EPOCH FROM CAST("Time Zone 5 Reached" AS TIME))) AS DOUBLE) / 60.0
+        END
+      )
+    synonyms: ["zone 5 time", "time in zone 5", "z5 time", "total zone 5"]
+
+  - name: total_time_in_zone_4_minutes
+    type: custom
+    description: "Total minutes spent in zone 4 across all intervals. For zone 5 intervals: Time Zone 5 Reached - Time Zone 4 Reached (estimated 1 min if Zone 4 Reached is blank). For zone 4-only intervals: Total Time - Time Zone 4 Reached"
+    expr: |
+      SUM(
+        CASE
+          WHEN "Time Zone 5 Reached" IS NOT NULL
+            AND CAST("Time Zone 5 Reached" AS VARCHAR) != ''
+          THEN
+            CASE
+              WHEN "Time Zone 4 Reached" IS NOT NULL AND CAST("Time Zone 4 Reached" AS VARCHAR) != ''
+              THEN CAST((EXTRACT(EPOCH FROM CAST("Time Zone 5 Reached" AS TIME)) - EXTRACT(EPOCH FROM CAST("Time Zone 4 Reached" AS TIME))) AS DOUBLE) / 60.0
+              ELSE 1.0
+            END
+          WHEN "Time Zone 4 Reached" IS NOT NULL AND CAST("Time Zone 4 Reached" AS VARCHAR) != ''
+          THEN CAST((EXTRACT(EPOCH FROM CAST("Total Time" AS TIME)) - EXTRACT(EPOCH FROM CAST("Time Zone 4 Reached" AS TIME))) AS DOUBLE) / 60.0
+        END
+      )
+    synonyms: ["zone 4 time", "time in zone 4", "z4 time", "total zone 4"]

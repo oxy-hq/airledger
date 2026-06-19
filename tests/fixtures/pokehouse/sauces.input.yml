@@ -1,0 +1,121 @@
+target: sauces.view.yml
+date_field: date
+list_display:
+  title: sauce
+  # The compact tile shows the output volume — what the kitchen cares
+  # about. Per-ingredient detail is still available in the expanded
+  # panel on tap.
+  subtitle: "${batch_qty}${batch_unit}"
+# Repeat-group: ingredient/qty/unit fan out into N rows per save. The
+# timeline groups all rows sharing one batch_id and presents one tile per
+# batch; edit/delete operate on the whole batch.
+repeat_group:
+  fields: [ingredient, ingredient_qty, ingredient_unit]
+  group_key: batch_id
+  label: Ingredient
+  min: 1
+fields:
+  id:
+    editable: false
+  batch_id:
+    editable: false
+  date:
+    widget: date
+    default: today
+    required: true
+  sauce:
+    widget: autocomplete
+    required: true
+    placeholder: e.g. Sriracha Aioli
+    options:
+      - Sriracha Aioli
+      - Miso Aioli
+      - Garlic-Oyster Sauce
+      - House Chili
+      - Miso Chicken Marinade
+      - Shoyu Chicken Marinade
+      - Poke House Ponzu
+      - PH Sweet Unagi Sauce
+      - Kewpie Mayo
+  batch_qty:
+    widget: number
+    required: true
+    min: 0
+  batch_unit:
+    widget: dropdown
+    required: true
+    options: [gal, qt, L, ml, oz]
+    default: gal
+  ingredient:
+    widget: autocomplete
+    required: true
+    placeholder: e.g. PH Sriracha Hot Sauce
+    # Suggestions drawn from the inventory's food-grade items
+    # (Sauces, Food Product, Produce, Seafood). Free-form entry still works.
+    options:
+      # Sauces
+      - PH Sriracha Hot Sauce (4 x 1 Gallon)
+      - PH Sweet Unagi Sauce (4 x 1 gal)
+      - PH Soy Sauce 18L
+      - Poke House Ponzu (18L)
+      - Sesame Oil 20kgs
+      - Miso Aioli (1 Gal)
+      - Sriracha Aioli (1 Gal)
+      - Garlic-Oyster Sauce (1 Gal)
+      - House Chili (1 Gal)
+      - Miso Chicken Marinade (1 Gal)
+      - Shoyu Chicken Marinade (1 Gal)
+      - Kewpie Mayo (4gal / box)
+      # Food Product
+      - Mayonnaise (4 x 1 gallon jugs)
+      - Miso Paste (4 x 6.6lb bags)
+      - Red Miso (Ingredient)
+      - PH Sushi Vinegar (18L)
+      - Sesame Seed 10kgs
+      - Almonds, Sliced 25lbs
+      - Almonds, Small Retail TORN & GLASSER
+      - Fried Onions (10kg)
+      - Furikake (30 x 300g bags)
+      - Sushi Ginger (10 x 1kg bags)
+      - Nori Strips (20 x 100g bags)
+      - Ogo Seaweed (10 x 1kg bags)
+      - Hijiki (Case) (10kg bag)
+      - Wakame Seaweed (Case) (12 x 1lb bags)
+      - Seaweed Salad
+      - Onigiri Wrap
+      - Handroll Wrap, Seaweed (10pk)
+      - Panko (10lb bag)
+      - Soy Sauce PACKETS
+      - Spam (8 x 12oz cans)
+      - Sweet Corn (Poke House) (6 cans)
+      - Togarashi (Case) (10 x 500g bags)
+      - Wasabi Packets, (2.5g x 1,000)
+      # Produce
+      - Avocado (Case)
+      - Green Onions (Case)
+      - Jalapeño (10lb Case)
+      - Mango
+      - Mixed Greens, Lettuce
+      - Pineapple 6ct
+      - Purple/Red Cabbage 40lb case
+      # Seafood
+      - Tuna Loin
+  ingredient_qty:
+    widget: number
+    required: true
+    min: 0
+  ingredient_unit:
+    widget: dropdown
+    required: true
+    options: [gal, qt, L, ml, oz, lb, kg, g, ea, case]
+    default: gal
+  start_time:
+    widget: text
+    placeholder: 10:42:00 AM
+    now_button: true
+  end_time:
+    widget: text
+    placeholder: 11:15:00 AM
+    now_button: true
+  notes:
+    widget: longtext

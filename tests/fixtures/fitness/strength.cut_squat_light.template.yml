@@ -1,0 +1,20 @@
+target: strength.view.yml
+name: "Cut · Squat (light)"
+description: >
+  Light squat — used on heavy-DL weeks. No top single, 2 working triples
+  at the configured weight (~70-80% of 1RM), RPE 5-6. Lets the spine
+  recover between heavy SQ weeks. Also use ad-hoc if back is guarded.
+  Warmup ramps 50/65/80/90% of the working weight → working triples.
+variables:
+  - { name: light_weight, label: "Light weight (lb)", type: number, default: 215 }
+entries:
+  - { exercise: Barbell Squat, weight: 45, reps: 8, notes: "warmup" }
+  - { exercise: Barbell Squat, weight: "{{ ((light_weight * 0.50 / 5) | round) * 5 }}", reps: 5, notes: "warmup" }
+  - { exercise: Barbell Squat, weight: "{{ ((light_weight * 0.65 / 5) | round) * 5 }}", reps: 3, notes: "warmup" }
+  - { exercise: Barbell Squat, weight: "{{ ((light_weight * 0.80 / 5) | round) * 5 }}", reps: 2, notes: "bridge" }
+  - { exercise: Barbell Squat, weight: "{{ ((light_weight * 0.90 / 5) | round) * 5 }}", reps: 1, notes: "bridge" }
+  - { exercise: Barbell Squat, weight: "{{ light_weight }}", reps: 3, notes: "light triple — belted" }
+  - { exercise: Barbell Squat, weight: "{{ light_weight }}", reps: 3, notes: "light triple — belted" }
+  - { exercise: Hanging Leg Raise, reps: 8, notes: "" }
+  - { exercise: Hanging Leg Raise, reps: 8, notes: "" }
+  - { exercise: Hanging Leg Raise, reps: 8, notes: "" }

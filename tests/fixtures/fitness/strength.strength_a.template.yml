@@ -1,0 +1,17 @@
+target: strength.view.yml
+name: Strength A
+description: Squat / bench / row day — set your working weights once
+variables:
+  - { name: squat, label: "Squat working weight", type: number, default: 135 }
+  - { name: bench, label: "Bench working weight", type: number, default: 135 }
+  - { name: row, label: "Row working weight", type: number, default: 115 }
+entries:
+  - { exercise: Barbell Squat, weight: "{{ squat - 50 }}", reps: 5 }
+  - { exercise: Barbell Squat, weight: "{{ squat - 25 }}", reps: 5 }
+  - { exercise: Barbell Squat, weight: "{{ squat }}",      reps: 5 }
+  - { exercise: Bench Press,   weight: "{{ bench - 30 }}", reps: 5 }
+  - { exercise: Bench Press,   weight: "{{ bench - 15 }}", reps: 5 }
+  - { exercise: Bench Press,   weight: "{{ bench }}",      reps: 5 }
+  - { exercise: Barbell Row,   weight: "{{ row }}",        reps: 8 }
+  - { exercise: Barbell Row,   weight: "{{ row }}",        reps: 8 }
+  - { exercise: Barbell Row,   weight: "{{ row }}",        reps: 8 }

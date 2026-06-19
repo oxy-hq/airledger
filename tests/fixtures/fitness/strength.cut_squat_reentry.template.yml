@@ -1,0 +1,19 @@
+target: strength.view.yml
+name: "Cut · Squat (reentry)"
+description: >
+  Squat reentry — one conservative top single 15-20 lb below normal,
+  RPE ≤ 8, to confirm readiness. Light backoffs, no paused work.
+  Warmup ramps 50/65/80/90% of the reentry single.
+variables:
+  - { name: reentry_single, label: "Reentry single (lb)", type: number, default: 265 }
+entries:
+  - { exercise: Barbell Squat, weight: 45, reps: 8, notes: "warmup" }
+  - { exercise: Barbell Squat, weight: "{{ ((reentry_single * 0.50 / 5) | round) * 5 }}", reps: 5, notes: "warmup" }
+  - { exercise: Barbell Squat, weight: "{{ ((reentry_single * 0.65 / 5) | round) * 5 }}", reps: 3, notes: "warmup" }
+  - { exercise: Barbell Squat, weight: "{{ ((reentry_single * 0.80 / 5) | round) * 5 }}", reps: 2, notes: "bridge" }
+  - { exercise: Barbell Squat, weight: "{{ ((reentry_single * 0.90 / 5) | round) * 5 }}", reps: 1, notes: "bridge" }
+  - { exercise: Barbell Squat, weight: "{{ reentry_single }}", reps: 1, notes: "reentry single — belted, cap RPE 8" }
+  - { exercise: Barbell Squat, weight: "{{ ((reentry_single * 0.85 / 5) | round) * 5 }}", reps: 3, notes: "backoff" }
+  - { exercise: Barbell Squat, weight: "{{ ((reentry_single * 0.85 / 5) | round) * 5 }}", reps: 3, notes: "backoff" }
+  - { exercise: Hanging Leg Raise, reps: 8, notes: "" }
+  - { exercise: Hanging Leg Raise, reps: 8, notes: "" }

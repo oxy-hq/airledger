@@ -1,0 +1,476 @@
+target: strength.view.yml
+icon: dumbbell
+date_field: date
+# History-panel highlight: for each day in the history sheet, the row with
+# the largest e1rm (Weight × (1 + Reps/30)) gets the "top set" tint.
+# The measure itself is declared on strength.view.yml.
+top_metric: max_e1rm
+plannable:
+  log_field: start_time
+  log_format: time_string
+post_log:
+  model: sonnet
+  prompt: |
+    You're a sharp, technical strength coach. The user just logged a set,
+    and you're judging it against the rest of today's workout AND the
+    previous workout for the same exercise.
+
+    Just-logged set:
+      {{ row['exercise'] }} — {{ row['weight'] }} × {{ row['reps'] }}{% if row['rpe'] %} @ RPE {{ row['rpe'] }}{% endif %} {% if row['notes'] %}({{ row['notes'] }}){% endif %}
+
+    Today's {{ row['exercise'] }} sets so far (this includes the just-logged set):
+    {% for r in today_for('exercise', row['exercise']) %}
+    - {{ r['weight'] }} × {{ r['reps'] }}{% if r['rpe'] %} @ RPE {{ r['rpe'] }}{% endif %} {% if r['notes'] %}— {{ r['notes'] }}{% endif %}
+    {% else %}
+    - (this is the first {{ row['exercise'] }} set today)
+    {% endfor %}
+
+    Previous {{ row['exercise'] }} workouts (newest first, up to 3):
+    {% for workout in last_workouts_for('exercise', row['exercise'], 3) %}
+    {{ workout[0]['date'] }}:
+    {% for s in workout %}
+      - {{ s['weight'] }} × {{ s['reps'] }}{% if s['rpe'] %} @ RPE {{ s['rpe'] }}{% endif %} {% if s['notes'] %}— {{ s['notes'] }}{% endif %}
+    {% endfor %}
+    {% else %}
+    - (no prior {{ row['exercise'] }} sessions on record)
+    {% endfor %}
+
+    Reply with ONE short sentence — 22 words max — that compares this
+    set to what you'd expect given today's ramp AND the previous workout.
+    Call out one specific thing: a PR, a regression, a planned warmup
+    landing as expected, a load/rep change vs. last session, or an RPE
+    pattern. Be precise — reference actual numbers from the context, not
+    generic platitudes. No emoji. No filler.
+list_display:
+  title: exercise
+  subtitle: ${weight} × ${reps}
+fields:
+  id:
+    editable: false
+  date:
+    widget: date
+    default: today
+    required: true
+  day_of_week:
+    derive:
+      from: date
+      format: weekday_long
+  exercise:
+    widget: autocomplete
+    required: true
+    history: true
+    placeholder: e.g. Barbell Squat
+    options:
+    - Flat Barbell Bench Press
+    - Barbell Deadlift
+    - Barbell Squat
+    - Overhead Press
+    - Pull Up
+    - Lateral Dumbbell Raise
+    - Chin Up
+    - Barbell Row
+    - Barbell Standing Military Press
+    - Plank
+    - Hanging Leg Raise
+    - Parallel Bar Triceps Dip
+    - Dumbbell Row
+    - Jumping Jacks
+    - Foot Supported L Sit
+    - Back to Wall Handstand Pushup On Half Paralettes
+    - Lat Pulldown
+    - Elevated Paralette Pushup
+    - Barbell Incline Bench Press
+    - Diamond Pushup
+    - One Handed Pushup
+    - Dumbbell Curl
+    - Cable Face Pull
+    - Back to Wall Handstand Pushup
+    - Dumbbell Front Raise
+    - Rowing Machine
+    - Dumbbell Bicep Curl
+    - Seated Cable Row
+    - Leg Press
+    - Weighted Pull Up
+    - Underhand Grip Barbell Row
+    - Pendlay Row
+    - Barbell Front Squat
+    - Pistol Squat
+    - Barbell Close Grip Bench Press
+    - Dumbbell Shoulder Press
+    - Barbell Stiff-Legged Barbell Deadlift
+    - Dumbbell Hammer Curl
+    - Tuck Front Lever
+    - Dumbbell Incline Bench Press
+    - Bear crawl
+    - Lateral Cable Raise
+    - Cable Rope Face Pull
+    - Seated Leg Curl
+    - T Bar Lying Row
+    - Muscle Up
+    - Seated Leg Curl Machine
+    - Cable Rope Triceps Pushdown
+    - Side plank
+    - Cable Rope Hammer Curls
+    - Barbell Sumo Barbell Deadlift
+    - Barbell Curl
+    - Flat Dumbbell Bench Press
+    - Dumbbell Bench Press
+    - EZ-Bar Preacher Curl
+    - Muscle Up Green Band
+    - Dumbbell Shoulder Shrug
+    - Lateral Machine Raise
+    - Dumbbell One Arm Standing Lateral Raise
+    - Assisted Pistol Squat
+    - Pushup
+    - Leg Extensions
+    - Standing One Leg Bodyweight Calf Raise
+    - Paralette Pushup
+    - Pseudo Planche Pushup
+    - Bodyweight Squat
+    - Strict Wall EZ-Bar Curl
+    - Barbell Up Right Row
+    - Deep squat dynamic stretch
+    - Close Grip Chin Up
+    - Side plank with lateral raise
+    - Calf Press On Leg Press
+    - Rear Delt Dumbbell Raise
+    - Muscle Up Black Band
+    - T-Bar Row
+    - Face Pull (Red Band)
+    - Parallel Bar Leg Raise
+    - Cable External Rotation
+    - Standing Biceps Cable Curl
+    - Elevated Pike Push Up
+    - Dumbbell Alternate Bicep Curl
+    - Dumbbell Arnold Press
+    - Dumbbell Bent Over Row
+    - One-Arm Dumbell Row
+    - Straight leg L sit
+    - Wide Grip Lat Pulldown
+    - Adductor rock
+    - Dumbbell Bent Over Delt Raise
+    - Machine Fly
+    - Barbell Behind The Back Wrist Curl
+    - Hammer Grip Pull Up
+    - Side squat
+    - Ankle dorsiflexion stretch
+    - Lateral Cable Raise (Partials)
+    - Barbell Lying Triceps Extension
+    - Superman
+    - Standing Dumbbell Calf Raise
+    - Triceps Pushdown - Rope
+    - Ab Crunch Machine
+    - Weighted Pistol Squat
+    - Romanian Barbell Deadlift
+    - Barbell Side Split Squat
+    - Inverted Rows Rings
+    - Paralette Pushup On Green Band
+    - Cable Triceps Pushdown
+    - Lying Leg Curls
+    - Side Bridge
+    - Lat Pulldown Neutral Grip
+    - Deadbug
+    - Smith Machine Incline Bench Press
+    - Pike Pushup on Paralettes
+    - Kettlebell rack Barbell Deadlift
+    - Quick front lever
+    - Dumbbell Lateral Raises 1.5 Rep
+    - Knee Hip Raise On Parallel Bars
+    - Rope Push Down
+    - Seated Calf Raise
+    - Bended Leg L-sit
+    - High Knees
+    - Pistol Squat Up And Down Split By Roll
+    - Muscle Up Lightest Band
+    - Barbell Military Press Behind Neck
+    - Dumbbell Incline Fly
+    - Inverted Row
+    - Barbell Preacher Curl
+    - Barbell Shoulder Press
+    - Kettlebell Swing
+    - Crunches
+    - Exercise Ball Crunch
+    - Face to Wall Handstand Pushup
+    - Seated Dumbbell Press
+    - Seated Machine Curl
+    - One Leg Floor Calf Raise
+    - Cable Pull Through
+    - Dumbbell Bent Arm Pullover
+    - Dumbbell Seated Curl
+    - Stomach To Wall Handstand
+    - Neutral Chin Up
+    - Iso-lateral Row
+    - Single Arm Cable Row
+    - Trap Bar Barbell Deadlift
+    - Seated Incline Dumbbell Curl
+    - Barbell Shrug
+    - Hyperextensions - Back Extensions
+    - Rope Curl
+    - Peroneals Stretch
+    - Dynamax ball throw
+    - Straight arm sit ups
+    - Push Press
+    - EZ-Bar Curl
+    - Barbell Rack Pulls
+    - Rowing
+    - Close Grip Front Lat Pulldown
+    - Cable Rope Rear Delt Row
+    - Cable Crossover
+    - Barbell Deadlift with 3 sec neg
+    - Running (Treadmill)
+    - Seated Cable Reverse Fly
+    - Cable Reverse Fly
+    - Dumbbell split squat
+    - Dumbbell hold (reps in seconds)
+    - Barbell upright row
+    - Dumbbell Standing Triceps Extension
+    - Explosive bench pushup
+    - Reverse Crunch
+    - Dumbbell Fly
+    - Upright Row
+    - Close Triceps Pushup
+    - L-Sit Pull Up
+    - Weight Plate Russian Twist
+    - Cable Curl
+    - Leg Raise
+    - Dumbbell Concentration Curl
+    - Dumbbell static bench
+    - Palloff Press
+    - Barbell Reverse Grip Skullcrusher
+    - Step Machine
+    - Hanging Leg Raise Toes to Bar
+    - Weight Plate Decline Crunch
+    - Barbell Glute Bridge
+    - Cable Rope Overhead Triceps Extension
+    - Held Pull Up
+    - Thigh Abductor
+    - Push Up
+    - Plank with Feet on Bench
+    - Pushup (4 counts down)
+    - Dumbbell Concentration Curls
+    - Close Grip Cable Curl
+    - Eleanor pushups
+    - Muscle Up Orange Band
+    - Reverse Plank
+    - Swimming
+    - Shoulder front lateral alternating lunge raise
+    - Pull Up Black Band
+    - Box pistol squat
+    - Bodyweight row
+    - Hollow Body Hold
+    - Cable seated row medium grip
+    - Back to Wall Handstand Pushup On Deep Paralettes
+    - L-sit Chin Up
+    - Standing Calf Raises
+    - Ring Dip
+    - Pull Up Green Band
+    - Arch Body Hold
+    - Leg Extension Machine
+    - Decline Ab Reach
+    - Seated Cable Row Wide Neutral Grip
+    - Dumbbell Lying Triceps Extension Across Face
+    - One Arm Dumbbell Row
+    - Machine Triceps Extension
+    - One Leg Bodyweight Squat
+    - Flat Dumbbell Fly
+    - Single-legged Calf Raise
+    - Straight-Arm Cable Pushdown
+    - Dumbbell Lying Rear Lateral Raise
+    - Front Plate Raise
+    - Weighted Decline Crunch
+    - Dumbbell Squat
+    - Decline Oblique Crunch
+    - Bent Arm Barbell Pullover
+    - Jump squats
+    - Decline Crunch
+    - Assisted One-arm Chinup
+    - Towel Chin Up
+    - Smith Machine Squat
+    - Muscle Up Blue Band (Strict)
+    - Tricep Dumbbell Kickback
+    - Pull Up to Chest
+    - Lat Pulldown Past Chest
+    - Bench Press Machine
+    - Assisted Pistol Squats
+    - Muscle Up 4.4cm Band
+    - One Hand Out Paralette Pushups
+    - Seated Calf Raise Machine
+    - Seated Machine Row
+    - Pike Pushups on Deep Paralettes
+    - Muscle Up Light Blue Band
+    - Hanging Leg Raise In Chin Up Position
+    - Diamond pushup green band
+    - Kettlebell Front Squats
+    - Chin Up To Chest
+    - Reverse Fly
+    - Dumbbell Stiff Leg Barbell Deadlift
+    - Calf Press On Leg Press Machine
+    - Front Lever Up And Down
+    - Assisted One Arm Pull Up
+    - Glute Bridge Machine
+    - Cable Internal Rotation
+    - Muscle Up Black Band Movement
+    - Chair L-sit
+    - Dumbbell Lunges
+    - Hammer Strength Row
+    - Dumbbell Seated Bent Over Reverse Fly
+    - Incline Hammer Strength Chest Press
+    - Thigh Adductor
+    - Dumbbell External Rotation
+    - L sit handstand swing
+    - Incline Dumbbell Curl
+    - Dumbbell static floor press
+    - Lunge
+    - Sternum Dynamic Pull Up
+    - Gironda Sternum Chin Ups
+    - Dumbbell Straight Arm Pullover
+    - Alternate Heel Touchers
+    - Standing Calf Raise
+    - Elevated Paralette Pushup with Green Band
+    - Leg Pull In
+    - Hamstring Curl
+    - Knee raises with farmer's walk
+    - Decline Reverse Crunch
+    - Dumbbell Seated Calf Raise
+    - Reverse Grip Lat Pull Down
+    - Cable Straight Arm Push Down
+    - Dumbbell Bicep Curl With Stork Stance
+    - Cable Standing One Arm Bicep Curl
+    - Kettlebell Goblet Squat
+    - Bench Press Heavy Hold
+    - Muscle Up 2.9cm Band
+    - Front Lever Up Down
+    - Dumbbell Preacher Curl
+    - Barbell Decline Bench Press
+    - Running (Outdoor)
+    - Pull up curl (mod muscle up)
+    - T
+    - Lying Leg Curl Machine
+    - Pike Pushup
+    - Lateral Band Raise (Red)
+    - Towel Pull-up
+    - L sit handstand negative
+    - Eleanor Diamond Pushup
+    - Oblique Raises on Parallel Bars
+    - Dumbbell Incline Bench Curl
+    - Barbell Lunge
+    - Muscle Up Green Band (Strict)
+    - Dumbbell Seated Bicep Curl
+    - Green Band Front Squat with Dumbbell
+    - Transition Negatives
+    - Muscle Up Purple Band
+    - Hammer Strength Shoulder Press
+    - Muscle Up Red Band
+    - Partial Lat Pulldown
+    - Good Morning
+    - Tuck Front Lever Row
+    - Elliptical Trainer
+    - Mountain Climbers
+    - Chair Sit
+    - Eleanor lunges
+    - Side plank with leg raised
+    - Handstand Practice
+    - Thoracic Extension (Foam Roller)
+    - Open Books
+    - Lat Stretch
+    - Chin Tucks
+    - Wall Slides
+    - Serratus Wall Slides
+    - Trap-3 Raise
+    - Farmer Carry
+  weight:
+    widget: number
+    required: true
+    min: 0
+    show_when:
+      exercise:
+        not_in_group: [isometric, timed, mobility]
+  reps:
+    widget: number
+    required: true
+    min: 0
+    max: 100
+    show_when:
+      exercise:
+        not_in_group: [isometric, timed]
+  duration:
+    widget: number
+    required: true
+    min: 0
+    placeholder: "seconds"
+    show_when:
+      exercise:
+        in_group: isometric
+  start_time:
+    widget: timer
+    placeholder: 3:54:00 PM
+    # Stop logs both: end_time as wall-clock (for timed exercises like
+    # Handstand Practice) and duration in seconds (for isometric holds
+    # like Plank). show_when on weight/reps/duration/end_time hides
+    # whichever doesn't apply to the chosen exercise, so save drops the
+    # irrelevant value automatically.
+    stop_targets:
+      - { target: end_time, format: time_of_day }
+      - { target: duration, format: seconds }
+  end_time:
+    widget: text
+    placeholder: 3:54:00 PM
+    now_button: true
+  rpe:
+    widget: number
+    min: 1
+    max: 10
+    show_when:
+      exercise:
+        not_in_group: [isometric, timed, mobility]
+  notes:
+    widget: longtext
+
+# Named, reusable value sets for show_when. Adding more (e.g. cardio
+# modalities, machine groups) is just another entry here — no schema
+# change required.
+groups:
+  # Timed-session exercises: just start_time + end_time + notes. No
+  # weight/reps/duration/rpe — the start/end stamps are the data.
+  timed:
+    - Handstand Practice
+  # Low-load mobility/prep exercises: just reps. Weight + RPE hidden
+  # because bodyweight mobility isn't a progressive-overload target —
+  # the rep is the lever. Duration stays hidden (set count, not hold).
+  mobility:
+    - Open Books
+    - Chin Tucks
+    - Wall Slides
+    - Serratus Wall Slides
+  isometric:
+    - Thoracic Extension (Foam Roller)
+    - Lat Stretch
+    - Farmer Carry
+    - Tuck Front Lever
+    - Quick front lever
+    - Hollow Body Hold
+    - Plank
+    - Side plank
+    - Side plank with leg raised
+    - Side plank with lateral raise
+    - Side Bridge
+    - Foot Supported L Sit
+    - Straight leg L sit
+    - Bended Leg L-sit
+    - Chair L-sit
+    - L sit handstand swing
+    - L sit handstand negative
+    - Arch Body Hold
+    - Reverse Plank
+    - Superman
+    - Stomach To Wall Handstand
+    - Held Pull Up
+    - Bench Press Heavy Hold
+    - Dumbbell static bench
+    - Dumbbell static floor press
+    - Dumbbell hold (reps in seconds)
+    - Deep squat dynamic stretch
+    - Ankle dorsiflexion stretch
+    - Peroneals Stretch
+    - Adductor rock
+    - Chair Sit

@@ -1,0 +1,22 @@
+target: sauces.view.yml
+name: "Sriracha Aioli"
+description: "8 gal mayo + 1.5 gal sesame oil + 6 gal sriracha → 17 gal"
+entries:
+  - sauce: Sriracha Aioli
+    batch_qty: 17
+    batch_unit: gal
+    ingredient: "Mayonnaise (4 x 1 gallon jugs)"
+    ingredient_qty: 8
+    ingredient_unit: gal
+  - sauce: Sriracha Aioli
+    batch_qty: 17
+    batch_unit: gal
+    ingredient: "Sesame Oil 20kgs"
+    ingredient_qty: 1.5
+    ingredient_unit: gal
+  - sauce: Sriracha Aioli
+    batch_qty: 17
+    batch_unit: gal
+    ingredient: "PH Sriracha Hot Sauce (4 x 1 Gallon)"
+    ingredient_qty: 6
+    ingredient_unit: gal

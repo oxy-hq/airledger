@@ -1,0 +1,17 @@
+target: strength.view.yml
+name: Strength B
+description: Deadlift / overhead press / pulldown day — set your working weights once
+variables:
+  - { name: deadlift, label: "Deadlift working weight", type: number, default: 225 }
+  - { name: ohp,      label: "OHP working weight",      type: number, default: 95 }
+  - { name: pulldown, label: "Pulldown working weight", type: number, default: 120 }
+entries:
+  - { exercise: Barbell Deadlift, weight: "{{ deadlift - 90 }}", reps: 5 }
+  - { exercise: Barbell Deadlift, weight: "{{ deadlift - 45 }}", reps: 5 }
+  - { exercise: Barbell Deadlift, weight: "{{ deadlift }}",      reps: 5 }
+  - { exercise: Overhead Press,   weight: "{{ ohp - 20 }}",      reps: 5 }
+  - { exercise: Overhead Press,   weight: "{{ ohp - 10 }}",      reps: 5 }
+  - { exercise: Overhead Press,   weight: "{{ ohp }}",           reps: 5 }
+  - { exercise: Lat Pulldown,     weight: "{{ pulldown - 20 }}", reps: 8 }
+  - { exercise: Lat Pulldown,     weight: "{{ pulldown }}",      reps: 8 }
+  - { exercise: Lat Pulldown,     weight: "{{ pulldown }}",      reps: 8 }

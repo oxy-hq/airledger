@@ -1,0 +1,23 @@
+target: strength.view.yml
+name: "Cut · Squat (heavy)"
+description: >
+  Cut-phase squat, normal/heavy mode. Bridged warmup ramp
+  (50/65/80/90% of top_single) → one quality top single (RPE 8-8.5) →
+  2 backoff triples (~15% under) → one paused-in-the-hole technique set →
+  hanging leg raises for the brace. Same back feel-test gate as deadlift;
+  switch to light if guarded.
+variables:
+  - { name: top_single, label: "Top single (lb)", type: number, default: 285 }
+entries:
+  - { exercise: Barbell Squat, weight: 45, reps: 8, notes: "warmup" }
+  - { exercise: Barbell Squat, weight: "{{ ((top_single * 0.50 / 5) | round) * 5 }}", reps: 5, notes: "warmup" }
+  - { exercise: Barbell Squat, weight: "{{ ((top_single * 0.65 / 5) | round) * 5 }}", reps: 3, notes: "warmup" }
+  - { exercise: Barbell Squat, weight: "{{ ((top_single * 0.80 / 5) | round) * 5 }}", reps: 2, notes: "bridge" }
+  - { exercise: Barbell Squat, weight: "{{ ((top_single * 0.90 / 5) | round) * 5 }}", reps: 1, notes: "bridge" }
+  - { exercise: Barbell Squat, weight: "{{ top_single }}", reps: 1, notes: "top single — belted" }
+  - { exercise: Barbell Squat, weight: "{{ ((top_single * 0.85 / 5) | round) * 5 }}", reps: 3, notes: "backoff" }
+  - { exercise: Barbell Squat, weight: "{{ ((top_single * 0.85 / 5) | round) * 5 }}", reps: 3, notes: "backoff" }
+  - { exercise: Barbell Squat, weight: "{{ ((top_single * 0.75 / 5) | round) * 5 }}", reps: 2, notes: "paused in the hole" }
+  - { exercise: Hanging Leg Raise, reps: 8, notes: "" }
+  - { exercise: Hanging Leg Raise, reps: 8, notes: "" }
+  - { exercise: Hanging Leg Raise, reps: 8, notes: "" }
