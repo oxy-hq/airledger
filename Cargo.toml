@@ -12,13 +12,16 @@ license = "Apache-2.0"
 
 [lib]
 name = "airledger_engine"
-# Once we add the FFI/WASM bindings, this becomes a cdylib + staticlib
-# + rlib (see airlayer's sdk-dart build-android.sh for the pattern).
-# Phase 1 ships an rlib only.
-crate-type = ["rlib"]
+# Three crate types:
+# - rlib: native Rust consumers (eventually airhouse, oxy-internal)
+# - cdylib: dynamic library Dart's dart:ffi loads at runtime
+# - staticlib: static archive for Swift / Kotlin native bindings
+#   (added when we wire iOS / Android in phase 4b)
+crate-type = ["rlib", "cdylib", "staticlib"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 serde_yaml = "0.9"
 thiserror = "1"
 # Dates / weekdays / ISO formatting — used by derives + codec round-trip.

@@ -7,6 +7,7 @@
 //! from the same input.
 
 pub mod eval;
+pub mod ffi;
 pub mod parse;
 pub mod schema;
 pub mod value;

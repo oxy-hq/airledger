@@ -22,16 +22,20 @@ build outputs.
 
 ## Status
 
-- Phase 1 — schema model + YAML parser. Tested against the real
-  airledger-fitness + pokehouse-ledger schemas as fixtures.
-- Phase 2 — validation, show-when, derives, template apply.
-- Phase 3 — sheets ingest (writes).
-- Phase 4 — FFI + WASM bindings.
+- ✅ Phase 1 — schema model + paired `.view.yml` / `.input.yml` parser.
+- ✅ Phase 2 — evaluator: show_when predicates, derives, codec,
+     minijinja templates.
+- ⏳ Phase 3 — sheets ingest (writes).
+- ✅ Phase 4a — Dart FFI binding, host build (`sdk-dart/`).
+- ⏳ Phase 4b — Dart FFI Android / iOS builds.
+- ⏳ Phase 5 — WASM binding for Oxy customer-app bundles.
 
-See `docs/architecture.md` (TODO) for the full plan.
+See [`docs/port-plan.md`](docs/port-plan.md) for the full plan,
+architectural decisions, and how to continue mid-stream.
 
 ## Run tests
 
 ```sh
-cargo test
+cargo test                       # 15 Rust tests
+cd sdk-dart && dart test         # 6 Dart FFI tests (rebuilds dylib if needed)
 ```

@@ -7,6 +7,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use serde::Serialize;
+
 use super::input::{
     InputSpec, ListDisplay, Plannable, PostLog, RepeatGroup,
 };
@@ -34,7 +36,7 @@ pub struct InputOverlay {
 
 /// Per-dim overlay — input spec + autocomplete samples + show_when +
 /// derive. Each is optional.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
 pub struct DimensionOverlay {
     pub input: Option<InputSpec>,
     pub samples: Option<Vec<String>>,
