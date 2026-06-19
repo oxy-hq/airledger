@@ -10,6 +10,7 @@ pub mod eval;
 pub mod ffi;
 pub mod parse;
 pub mod schema;
+pub mod sheets;
 pub mod value;
 
 pub use eval::{
@@ -18,4 +19,5 @@ pub use eval::{
 };
 pub use parse::{parse_input_overlay, parse_view, ParseError};
 pub use schema::{apply_overlay, OverlayError, ViewSchema};
+pub use sheets::{shift_row_indexes, ServiceAccount, SheetsError, SheetsRepository, ROW_INDEX_KEY};
 pub use value::{CellValue, Record};

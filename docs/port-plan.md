@@ -52,9 +52,9 @@ not necessary if we extract the engine cleanly.
 |---|---|---|
 | 1 | Schema model + `.view.yml` / `.input.yml` parser | ✅ shipped — commit `bfb2409` |
 | 2 | Evaluator layer: `show_when`, derives, codec, minijinja | ✅ shipped — commit `e9f3e64` |
-| 3 | Sheets ingest (ensureSheet + read + create + update + delete) | ⏳ not started |
-| 4a | Dart FFI binding (host build only) | ✅ shipped — this checkpoint |
-| 4b | Dart FFI Android / iOS builds | ⏳ not started |
+| 3 | Sheets ingest (ensure + list + create + update + delete + JWT auth) | ✅ shipped — this checkpoint |
+| 4a | Dart FFI binding (host build only) | ✅ shipped — commit `64a5883` |
+| 4b | Dart FFI Android / iOS build scripts | ✅ shipped — this checkpoint (scripts only; not yet exercised on a real device) |
 | 5 | WASM binding for Oxy customer-app bundle | ⏳ not started |
 | 6 | Drop in the engine on the Flutter mobile app (sdk-dart consumer) | ⏳ not started |
 | 7 | Drop in the engine on a React Oxy bundle (WASM consumer) | ⏳ not started |
@@ -79,19 +79,31 @@ not necessary if we extract the engine cleanly.
 │   │   ├── show_when.rs        is_visible_given (form hide/show predicate)
 │   │   ├── derive.rs           apply_derives + run_derive
 │   │   └── template.rs         minijinja with custom `round` filter
-│   └── ffi.rs                  C-ABI entry points
+│   ├── sheets/                 Sheets ingest (Phase 3)
+│   │   ├── auth.rs             service-account → RS256 JWT → access token
+│   │   ├── api.rs              REST wrappers (get_spreadsheet, get_values,
+│   │   │                          update_values, batch_update)
+│   │   └── repo.rs             SheetsRepository: ensure_sheet, list,
+│   │                              create, update, delete
+│   └── ffi.rs                  C-ABI entry points (parse only; sheets
+│                                 FFI deferred to Phase 6 wiring)
 ├── sdk-dart/                   Dart wrapper, mirrors airlayer/sdk-dart
 │   ├── lib/airledger_engine.dart   public API (AirledgerEngine.load(), parseView, ...)
 │   ├── lib/src/bindings.dart       raw FFI symbol lookups
 │   ├── lib/src/airledger_engine_base.dart   impl
 │   ├── test/smoke_test.dart        6 end-to-end FFI tests
-│   └── scripts/build-host.sh       cargo build (host platform)
+│   └── scripts/
+│       ├── build-host.sh           cargo build (host platform)
+│       ├── build-android.sh        cargo-ndk for arm64/armv7/x86_64/x86
+│       └── build-ios.sh            cargo rustc + lipo + xcframework
 ├── tests/
 │   ├── fixtures/                copies of real fitness + pokehouse YAMLs
 │   │   ├── fitness/             8 .input.yml + 12 .view.yml + templates
 │   │   └── pokehouse/           3 .input.yml + 2 .view.yml + templates
 │   ├── parse_real_schemas.rs    5 Phase-1 tests
-│   └── eval.rs                  10 Phase-2 tests
+│   ├── eval.rs                  10 Phase-2 tests
+│   ├── sheets_unit.rs           3 Phase-3 unit tests (no network)
+│   └── sheets_integration.rs    1 Phase-3 round-trip (env-gated)
 └── docs/port-plan.md            this file
 
 ~/repos/airledger-archive/      <- Dart Flutter app (legacy mobile, still shipping)
@@ -104,13 +116,23 @@ not necessary if we extract the engine cleanly.
 
 ```sh
 cd ~/repos/airledger
-cargo test                 # 15 Rust tests (parse + eval)
+cargo test                 # 18 Rust tests (3 + 5 + 10 + 1-gated)
 cargo build                # builds rlib + cdylib + staticlib
 
 cd sdk-dart
 ./scripts/build-host.sh    # rebuilds the engine for the dart loader
 dart pub get               # install dart deps
 dart test                  # 6 FFI smoke tests
+./scripts/build-android.sh # only when targeting Android device
+./scripts/build-ios.sh     # only when targeting iOS device / sim
+```
+
+For the Phase 3 sheets round-trip test against a real workbook:
+
+```sh
+export AIRLEDGER_SHEETS_TEST_CREDS_PATH=/path/to/service-account.json
+export AIRLEDGER_SHEETS_TEST_SPREADSHEET_ID=1abc...xyz
+cargo test --test sheets_integration -- --nocapture
 ```
 
 ## Key architectural decisions (so future-you doesn't have to re-derive)
@@ -134,49 +156,63 @@ dart test                  # 6 FFI smoke tests
   Flutter app and this Rust engine read the same `.view.yml` +
   `.input.yml` files from `airledger-fitness` and `pokehouse-ledger`.
   Schema changes are made in those repos; both consumers update.
+- **Sheets ingest is sync, not async.** `reqwest::blocking` + a
+  shared client across the repository. FFI is sync so async would
+  just add complexity. The WASM binding (Phase 5) will need an
+  async fetch-based variant — that's a separate module.
+- **Sheets retry policy: only transport failures.** Mirrors the
+  Dart `_RetryingClient`: 4 attempts max, exponential backoff
+  starting at 300ms, retry only on `is_connect()` / `is_timeout()`.
+  Never retry 4xx/5xx — non-idempotent writes stay safe.
+- **Sheets FFI surface deferred.** Phase 3 ships the Rust API and
+  an env-gated round-trip test. Wiring sheets into Dart is Phase 6
+  (the cutover); doing it now would mean designing the
+  state-handle ABI without a consumer asking for it.
 
 ## What's next, in order
 
-1. **Phase 3 — sheets ingest (write path).** Port
-   `sheets_repository.dart` to Rust: ensureSheet (additive header
-   merge), create, update, delete, list. Service-account JWT
-   signing needs `jsonwebtoken` + `ring` (or use `reqwest` +
-   `gcp_auth` if it exists). Add a `tests/sheets.rs` integration
-   test against a throwaway test workbook gated behind an env var.
-2. **Phase 4b — Android / iOS dylib builds.** Mirror
-   `airlayer/sdk-dart/scripts/build-android.sh` and `build-ios.sh`
-   using `cargo-ndk` and `cargo lipo`. Copy resulting `.so` /
-   `.dylib` into `sdk-dart/build/jniLibs/<abi>/` matching the
-   Flutter `jniLibs` layout.
-3. **Phase 5 — WASM binding.** Add `wasm-bindgen` exports next to
+1. **Phase 5 — WASM binding.** Add `wasm-bindgen` exports next to
    `src/ffi.rs` (or `src/wasm.rs`). Build via `wasm-pack build
    --target web`. Validate from a minimal JS harness that
    `parse_view_pair` returns the same JSON the Dart side gets.
-4. **Phase 6 — Flutter consumer.** In the archive repo's
+   Sheets module needs a fetch-based async variant for WASM (or
+   gate it off the wasm32 target and let the JS consumer call
+   Google APIs directly via fetch).
+2. **Phase 6 — Flutter consumer.** In the archive repo's
    `pubspec.yaml`, add `airledger_engine: { path:
-   ../airledger/sdk-dart }`. Replace `lib/services/schema_parser.dart`
-   and `lib/services/input_parser.dart` with a thin wrapper that
-   calls the engine. Cut over one parser at a time; both
-   implementations can coexist behind a feature flag.
-5. **Phase 7 — Oxy consumer.** Drop the WASM module into a React
+   ../airledger/sdk-dart }`. Replace `lib/services/schema_parser.dart`,
+   `lib/services/input_parser.dart`, and
+   `lib/services/sheets_repository.dart` with thin wrappers that
+   call the engine. This is also when we design the sheets FFI
+   surface (the engine needs to expose a `Repository` handle that
+   Dart can hold across calls). Cut over one service at a time;
+   both implementations can coexist behind a feature flag.
+3. **Phase 7 — Oxy consumer.** Drop the WASM module into a React
    customer-app bundle and call from the Oxy SDK. Whatever proves
    the round trip works end-to-end.
+4. **Phase 4b follow-up — actually exercise the build scripts.**
+   The scripts are mirrored from airlayer but not yet run against
+   a real Android NDK / iOS toolchain on this machine. First run
+   reveals any version / target gaps; expect to install
+   `cargo-ndk`, add the rustup targets, and possibly tweak release
+   profile settings for binary size.
 
 ## How to continue from here
 
 If you're picking this up after a context wipe:
 
-1. `cd ~/repos/airledger && cargo test` — make sure the 15 Rust
-   tests pass.
+1. `cd ~/repos/airledger && cargo test` — make sure the 18 Rust
+   tests pass (3 sheets unit + 5 parse + 10 eval + 1 integration
+   that skips without env).
 2. `cd sdk-dart && dart test` — make sure the 6 Dart FFI tests pass.
    If the engine was rebuilt, run `./scripts/build-host.sh` first.
 3. Open this doc + `tests/parse_real_schemas.rs` + `tests/eval.rs`
-   + `sdk-dart/test/smoke_test.dart` to get a feel for the API
-   surface and the parity guarantees with the Dart side.
+   + `tests/sheets_unit.rs` + `sdk-dart/test/smoke_test.dart` to
+   get a feel for the API surface and the parity guarantees with
+   the Dart side.
 4. Pick the next phase from the list above. They're roughly ordered
    by dependency / risk.
-5. The Dart-side reference for every Phase 3 piece lives in
+5. The Dart-side reference for the sheets module lives in
    `~/repos/airledger-archive/lib/services/sheets_repository.dart`.
-   Read that, then port. The shape of the Sheets API calls is well-
-   trodden — see `tool/migrate_4x4_to_correct_sheet.dart` in the
-   archive for an example of the JWT + sheets API pattern.
+   Compare to `src/sheets/repo.rs` to confirm parity on edge cases
+   (especially the `__row` resolution + additive header merge).

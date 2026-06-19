@@ -30,6 +30,15 @@ chrono = { version = "0.4", default-features = false, features = ["std", "clock"
 # semantics for `{{ var }}` and `{% if %}` blocks; we register a
 # `round` filter to mirror our custom Dart filter.
 minijinja = { version = "2", default-features = false, features = ["builtins"] }
+# Sheets ingest (Phase 3) deps. `rustls-tls` keeps us off openssl-sys
+# so cross-compile to Android NDK / iOS doesn't need a system libssl.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+# RS256 JWT signing for the service-account → access-token flow.
+jsonwebtoken = "9"
+# Auto-id for new sheet rows. Matches Dart's `Uuid().v4()` shape.
+uuid = { version = "1", features = ["v4"] }
+# Percent-encode tab names in Sheets API URLs (apostrophes, spaces).
+urlencoding = "2"
 
 [dev-dependencies]
 # Tests load actual YAML files via include_str! so changes in the
