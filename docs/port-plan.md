@@ -56,7 +56,8 @@ not necessary if we extract the engine cleanly.
 | 4a | Dart FFI binding (host build only) | ✅ shipped — commit `64a5883` |
 | 4b | Dart FFI Android / iOS build scripts | ✅ shipped — this checkpoint (scripts only; not yet exercised on a real device) |
 | 5 | WASM binding for Oxy customer-app bundle | ⏳ not started |
-| 6 | Drop in the engine on the Flutter mobile app (sdk-dart consumer) | ⏳ not started |
+| 6a | Smoke proof: engine loads + answers `version` on the device | ✅ shipped — this checkpoint |
+| 6b | Real cutover: schema_parser, input_parser, sheets_repository routed through engine | ⏳ not started |
 | 7 | Drop in the engine on a React Oxy bundle (WASM consumer) | ⏳ not started |
 
 ## What lives where
@@ -178,24 +179,27 @@ cargo test --test sheets_integration -- --nocapture
    Sheets module needs a fetch-based async variant for WASM (or
    gate it off the wasm32 target and let the JS consumer call
    Google APIs directly via fetch).
-2. **Phase 6 — Flutter consumer.** In the archive repo's
-   `pubspec.yaml`, add `airledger_engine: { path:
-   ../airledger/sdk-dart }`. Replace `lib/services/schema_parser.dart`,
-   `lib/services/input_parser.dart`, and
-   `lib/services/sheets_repository.dart` with thin wrappers that
-   call the engine. This is also when we design the sheets FFI
-   surface (the engine needs to expose a `Repository` handle that
-   Dart can hold across calls). Cut over one service at a time;
-   both implementations can coexist behind a feature flag.
+2. **Phase 6b — real Flutter cutover.** Phase 6a (this checkpoint)
+   only proves the engine loads. The actual swap-in is harder:
+   - JSON → Dart `ViewSchema` converter (the engine returns the
+     same shape, but as `Map<String, dynamic>`; the rest of the
+     Flutter app uses Dart classes).
+   - Route `schema_parser.dart` + `input_parser.dart` through the
+     engine, behind a feature flag.
+   - Design the sheets FFI handle: `airledger_engine_sheets_connect`
+     returns an opaque `*mut SheetsRepository`; Dart wraps with
+     a `Finalizer` so Rust drops it on GC. Methods
+     `_ensure / _list / _create / _update / _delete` take the
+     handle + JSON args.
+   - Cut over sheets last (state-handle ABI carries more risk
+     than the stateless parsers).
 3. **Phase 7 — Oxy consumer.** Drop the WASM module into a React
    customer-app bundle and call from the Oxy SDK. Whatever proves
    the round trip works end-to-end.
-4. **Phase 4b follow-up — actually exercise the build scripts.**
-   The scripts are mirrored from airlayer but not yet run against
-   a real Android NDK / iOS toolchain on this machine. First run
-   reveals any version / target gaps; expect to install
-   `cargo-ndk`, add the rustup targets, and possibly tweak release
-   profile settings for binary size.
+
+iOS build (`build-ios.sh`) needs full Xcode (only Command Line
+Tools were on this machine when 4b was validated). Android works.
+This is fine for now since the target device is a Pixel 10 Pro.
 
 ## How to continue from here
 

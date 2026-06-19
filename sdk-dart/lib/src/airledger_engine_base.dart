@@ -109,6 +109,18 @@ class EngineError implements Exception {
 }
 
 ffi.DynamicLibrary _loadLibrary() {
+  // On Android the system dynamic linker resolves the bare filename
+  // against the app's nativeLibraryDir (where jniLibs/<abi>/ files
+  // land after install) — no dev-path search needed.
+  if (Platform.isAndroid) {
+    return ffi.DynamicLibrary.open('libairledger_engine.so');
+  }
+  // On iOS the engine is statically linked into the app binary, so
+  // its symbols are already in the process image. No file to open.
+  if (Platform.isIOS) {
+    return ffi.DynamicLibrary.process();
+  }
+
   final candidates = <String>[];
   if (Platform.isMacOS) {
     candidates.addAll(_candidatePaths('libairledger_engine.dylib'));
