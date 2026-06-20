@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
 
@@ -175,61 +176,58 @@ class EngineSheetsRepository {
 
   /// `ensure_sheet` — create the tab if missing, additively merge
   /// the view's headers.
-  void ensureSheet(Map<String, dynamic> viewJson) {
-    _callOne(_b.sheetsEnsure, viewJson);
+  Future<void> ensureSheet(Map<String, dynamic> viewJson) async {
+    _ensureOpen();
+    final addr = _handle.address;
+    final view = jsonEncode(viewJson);
+    await Isolate.run(() => _runOne(_OpKind.ensure, addr, view, null));
   }
 
   /// `list` — return every data row. Optional [`onDate`] filters
   /// to rows whose `date_field` falls on that day. Records are
   /// JSON in the tagged-envelope wire form (use
   /// [`recordFromEngineJson`] to convert to native Dart values).
-  List<Map<String, dynamic>> list(
+  Future<List<Map<String, dynamic>>> list(
     Map<String, dynamic> viewJson, {
     DateTime? onDate,
-  }) {
+  }) async {
     _ensureOpen();
-    final viewPtr = jsonEncode(viewJson).toNativeUtf8().cast<ffi.Char>();
-    final datePtr = onDate == null
-        ? ffi.nullptr.cast<ffi.Char>()
-        : _isoDate(onDate).toNativeUtf8().cast<ffi.Char>();
-    try {
-      final out = _b.sheetsList(_handle, viewPtr, datePtr);
-      final decoded = _decode(out);
-      if (decoded is! List) {
-        throw EngineError('list expected array, got $decoded');
-      }
-      return decoded.cast<Map<String, dynamic>>();
-    } finally {
-      calloc.free(viewPtr);
-      if (datePtr != ffi.nullptr.cast<ffi.Char>()) calloc.free(datePtr);
+    final addr = _handle.address;
+    final view = jsonEncode(viewJson);
+    final dateStr = onDate == null ? null : _isoDate(onDate);
+    final decoded =
+        await Isolate.run(() => _runList(addr, view, dateStr));
+    if (decoded is! List) {
+      throw EngineError('list expected array, got $decoded');
     }
+    return decoded.cast<Map<String, dynamic>>();
   }
 
   /// `create` — insert at sheet row 2 (newest-first). Returns the
   /// inserted record with `__row = 0` and any auto-assigned `id`.
-  Map<String, dynamic> create(
+  Future<Map<String, dynamic>> create(
     Map<String, dynamic> viewJson,
     Map<String, dynamic> recordJson,
-  ) {
-    return _callTwo(_b.sheetsCreate, viewJson, recordJson);
+  ) async {
+    return _runTwoAsObject(_OpKind.create, viewJson, recordJson);
   }
 
   /// `update` — resolve row by `__row` or `id`, overwrite. Throws
   /// on resolution failure.
-  void update(
+  Future<void> update(
     Map<String, dynamic> viewJson,
     Map<String, dynamic> recordJson,
-  ) {
-    _callTwo(_b.sheetsUpdate, viewJson, recordJson);
+  ) async {
+    await _runTwoAsObject(_OpKind.update, viewJson, recordJson);
   }
 
   /// `delete` — resolve row by `__row` or `id`, drop. Silently
   /// no-ops if the row can't be resolved.
-  void delete(
+  Future<void> delete(
     Map<String, dynamic> viewJson,
     Map<String, dynamic> recordJson,
-  ) {
-    _callTwo(_b.sheetsDelete, viewJson, recordJson);
+  ) async {
+    await _runTwoAsObject(_OpKind.delete, viewJson, recordJson);
   }
 
   // ---------------------------------------------------------- internals
@@ -240,49 +238,18 @@ class EngineSheetsRepository {
     }
   }
 
-  Object? _callOne(
-    ffi.Pointer<ffi.Char> Function(ffi.Pointer<SheetsHandle>, ffi.Pointer<ffi.Char>) fn,
-    Map<String, dynamic> viewJson,
-  ) {
-    _ensureOpen();
-    final viewPtr = jsonEncode(viewJson).toNativeUtf8().cast<ffi.Char>();
-    try {
-      return _decode(fn(_handle, viewPtr));
-    } finally {
-      calloc.free(viewPtr);
-    }
-  }
-
-  Map<String, dynamic> _callTwo(
-    ffi.Pointer<ffi.Char> Function(
-      ffi.Pointer<SheetsHandle>,
-      ffi.Pointer<ffi.Char>,
-      ffi.Pointer<ffi.Char>,
-    ) fn,
+  Future<Map<String, dynamic>> _runTwoAsObject(
+    _OpKind kind,
     Map<String, dynamic> viewJson,
     Map<String, dynamic> recordJson,
-  ) {
+  ) async {
     _ensureOpen();
-    final viewPtr = jsonEncode(viewJson).toNativeUtf8().cast<ffi.Char>();
-    final recPtr = jsonEncode(recordJson).toNativeUtf8().cast<ffi.Char>();
-    try {
-      final decoded = _decode(fn(_handle, viewPtr, recPtr));
-      if (decoded is! Map<String, dynamic>) {
-        throw EngineError('expected JSON object, got: $decoded');
-      }
-      return decoded;
-    } finally {
-      calloc.free(viewPtr);
-      calloc.free(recPtr);
-    }
-  }
-
-  Object? _decode(ffi.Pointer<ffi.Char> ptr) {
-    final s = ptr.cast<Utf8>().toDartString();
-    _b.free(ptr);
-    final decoded = jsonDecode(s);
-    if (decoded is Map && decoded['error'] is String) {
-      throw EngineError(decoded['error'] as String);
+    final addr = _handle.address;
+    final view = jsonEncode(viewJson);
+    final record = jsonEncode(recordJson);
+    final decoded = await Isolate.run(() => _runTwo(kind, addr, view, record));
+    if (decoded is! Map<String, dynamic>) {
+      throw EngineError('expected JSON object, got: $decoded');
     }
     return decoded;
   }
@@ -293,6 +260,150 @@ class EngineSheetsRepository {
     final dd = d.day.toString().padLeft(2, '0');
     return '$y-$m-$dd';
   }
+}
+
+/// Op kind tag for the worker isolate dispatcher. Plain `int` so it
+/// crosses the isolate boundary cheaply.
+enum _OpKind { ensure, create, update, delete }
+
+/// Worker entry for `ensure_sheet` (one-arg FFI). Runs inside an
+/// `Isolate.run` closure, so it must be top-level / static and may
+/// only capture sendable values.
+Object? _runOne(_OpKind kind, int handleAddr, String viewJson, String? _) {
+  final b = _bindingsForCurrentIsolate();
+  final handle = ffi.Pointer<SheetsHandle>.fromAddress(handleAddr);
+  final viewPtr = viewJson.toNativeUtf8().cast<ffi.Char>();
+  try {
+    final fn = _selectOne(b, kind);
+    return _decodePtr(b, fn(handle, viewPtr));
+  } finally {
+    calloc.free(viewPtr);
+  }
+}
+
+Object? _runList(int handleAddr, String viewJson, String? dateStr) {
+  final b = _bindingsForCurrentIsolate();
+  final handle = ffi.Pointer<SheetsHandle>.fromAddress(handleAddr);
+  final viewPtr = viewJson.toNativeUtf8().cast<ffi.Char>();
+  final datePtr = dateStr == null
+      ? ffi.nullptr.cast<ffi.Char>()
+      : dateStr.toNativeUtf8().cast<ffi.Char>();
+  try {
+    return _decodePtr(b, b.sheetsList(handle, viewPtr, datePtr));
+  } finally {
+    calloc.free(viewPtr);
+    if (datePtr != ffi.nullptr.cast<ffi.Char>()) calloc.free(datePtr);
+  }
+}
+
+Object? _runTwo(
+  _OpKind kind,
+  int handleAddr,
+  String viewJson,
+  String recordJson,
+) {
+  final b = _bindingsForCurrentIsolate();
+  final handle = ffi.Pointer<SheetsHandle>.fromAddress(handleAddr);
+  final viewPtr = viewJson.toNativeUtf8().cast<ffi.Char>();
+  final recPtr = recordJson.toNativeUtf8().cast<ffi.Char>();
+  try {
+    final fn = _selectTwo(b, kind);
+    return _decodePtr(b, fn(handle, viewPtr, recPtr));
+  } finally {
+    calloc.free(viewPtr);
+    calloc.free(recPtr);
+  }
+}
+
+ffi.Pointer<ffi.Char> Function(
+  ffi.Pointer<SheetsHandle>,
+  ffi.Pointer<ffi.Char>,
+) _selectOne(EngineBindings b, _OpKind kind) {
+  switch (kind) {
+    case _OpKind.ensure:
+      return b.sheetsEnsure;
+    case _OpKind.create:
+    case _OpKind.update:
+    case _OpKind.delete:
+      throw StateError('not a one-arg op: $kind');
+  }
+}
+
+ffi.Pointer<ffi.Char> Function(
+  ffi.Pointer<SheetsHandle>,
+  ffi.Pointer<ffi.Char>,
+  ffi.Pointer<ffi.Char>,
+) _selectTwo(EngineBindings b, _OpKind kind) {
+  switch (kind) {
+    case _OpKind.create:
+      return b.sheetsCreate;
+    case _OpKind.update:
+      return b.sheetsUpdate;
+    case _OpKind.delete:
+      return b.sheetsDelete;
+    case _OpKind.ensure:
+      throw StateError('not a two-arg op: $kind');
+  }
+}
+
+Object? _decodePtr(EngineBindings b, ffi.Pointer<ffi.Char> ptr) {
+  final s = ptr.cast<Utf8>().toDartString();
+  b.free(ptr);
+  final decoded = jsonDecode(s);
+  if (decoded is Map && decoded['error'] is String) {
+    throw EngineError(decoded['error'] as String);
+  }
+  return decoded;
+}
+
+EngineBindings? _isolateBindings;
+
+/// Lazily build a bindings instance for the current isolate. Each
+/// worker isolate looks up the library + symbols once, then caches
+/// for any subsequent calls in the same isolate. With `Isolate.run`
+/// this still means one lookup per call (each call spawns a fresh
+/// isolate) — but the dynamic linker keeps the .so loaded process-
+/// wide, so the lookup is cheap.
+EngineBindings _bindingsForCurrentIsolate() {
+  return _isolateBindings ??= EngineBindings(_openLibrary());
+}
+
+ffi.DynamicLibrary _openLibrary() {
+  if (Platform.isAndroid) {
+    return ffi.DynamicLibrary.open('libairledger_engine.so');
+  }
+  if (Platform.isIOS) {
+    return ffi.DynamicLibrary.process();
+  }
+  // Host platforms reuse `AirledgerEngine.load`'s candidate search.
+  return AirledgerEngine.load()._b == _isolateBindings
+      ? ffi.DynamicLibrary.process()
+      : (() {
+          // Fall back to the same loader the main isolate uses.
+          // Tests run on the host and need the cargo target/ paths;
+          // duplicate the logic here so workers don't depend on
+          // main-isolate state.
+          for (final p in _hostCandidatePaths()) {
+            if (File(p).existsSync()) return ffi.DynamicLibrary.open(p);
+          }
+          return ffi.DynamicLibrary.process();
+        })();
+}
+
+List<String> _hostCandidatePaths() {
+  final cwd = Directory.current.path;
+  final name = Platform.isMacOS
+      ? 'libairledger_engine.dylib'
+      : Platform.isWindows
+          ? 'airledger_engine.dll'
+          : 'libairledger_engine.so';
+  return [
+    '$cwd/target/release/$name',
+    '$cwd/target/debug/$name',
+    '$cwd/../target/release/$name',
+    '$cwd/../target/debug/$name',
+    name,
+  ];
 }
 
 class _Token {
