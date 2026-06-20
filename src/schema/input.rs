@@ -33,7 +33,11 @@ pub struct InputSpec {
     /// Resolved at form-create time. Recognized special strings:
     /// `"now"` (current datetime), `"today"` (current date). Anything
     /// else is used verbatim.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Wire-format key is `default` (matches YAML + the Dart adapter).
+    /// Without the rename the engine round-trip would lose every
+    /// `default: today` and the form's date autofill would break.
+    #[serde(default, rename = "default", skip_serializing_if = "Option::is_none")]
     pub default_value: Option<serde_yaml::Value>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
