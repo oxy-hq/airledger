@@ -9,11 +9,19 @@
 //! in [`crate::eval::codec`].
 
 use chrono::{NaiveDate, NaiveDateTime};
+use serde::{Deserialize, Serialize};
 
 /// One cell value — either an in-memory typed value or a wire-shaped
 /// scalar. Designed so `CellValue::Null` is the right "empty" for both
 /// optional form fields and Sheets blank cells.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// Serializes to a tagged JSON envelope: `{"kind":"int","value":42}`,
+/// `{"kind":"date","value":"2026-06-19"}`, `{"kind":"null"}`. The
+/// envelope lets the Dart side recover `DateTime` vs string for
+/// the date variants without consulting the schema.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "value")]
+#[serde(rename_all = "snake_case")]
 pub enum CellValue {
     Null,
     Bool(bool),

@@ -54,10 +54,12 @@ not necessary if we extract the engine cleanly.
 | 2 | Evaluator layer: `show_when`, derives, codec, minijinja | ✅ shipped — commit `e9f3e64` |
 | 3 | Sheets ingest (ensure + list + create + update + delete + JWT auth) | ✅ shipped — this checkpoint |
 | 4a | Dart FFI binding (host build only) | ✅ shipped — commit `64a5883` |
-| 4b | Dart FFI Android / iOS build scripts | ✅ shipped — this checkpoint (scripts only; not yet exercised on a real device) |
+| 4b | Dart FFI Android / iOS build scripts | ✅ shipped — Android validated, iOS scripts ready (needs full Xcode) |
 | 5 | WASM binding for Oxy customer-app bundle | ⏳ not started |
-| 6a | Smoke proof: engine loads + answers `version` on the device | ✅ shipped — this checkpoint |
-| 6b | Real cutover: schema_parser, input_parser, sheets_repository routed through engine | ⏳ not started |
+| 6a | Smoke proof: engine loads + answers `version` on the device | ✅ shipped |
+| 6b | Schema cutover: `schema_parser` + `input_parser` routed through engine | ✅ shipped — `f790111` / `ef6785c` in archive |
+| 6c | Sheets FFI + Dart wrapper (`EngineSheetsRepository`) | ✅ shipped — this checkpoint (consumer cutover still pending) |
+| 6d | Archive sheets consumer cutover — swap `SheetsRepository` callsites onto engine | ⏳ not started |
 | 7 | Drop in the engine on a React Oxy bundle (WASM consumer) | ⏳ not started |
 
 ## What lives where

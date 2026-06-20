@@ -74,6 +74,53 @@ void main() {
     );
   });
 
+  test('recordToEngineJson + recordFromEngineJson round-trip', () {
+    final original = <String, Object?>{
+      'id': 'abc-123',
+      'note': 'hi',
+      'count': 42,
+      'weight': 180.5,
+      'on_date': DateTime(2026, 6, 19),
+      'logged_at': DateTime(2026, 6, 19, 9, 30, 15),
+      'empty': null,
+      'flag': true,
+    };
+    final tagged = recordToEngineJson(original);
+    // Spot-check the wire shape: dates are tagged, datetimes too.
+    expect(tagged['on_date'], {'kind': 'date', 'value': '2026-06-19'});
+    expect(tagged['logged_at'], {
+      'kind': 'date_time',
+      'value': '2026-06-19T09:30:15',
+    });
+    expect(tagged['empty'], {'kind': 'null'});
+    expect(tagged['flag'], {'kind': 'bool', 'value': true});
+    expect(tagged['count'], {'kind': 'int', 'value': 42});
+
+    final back = recordFromEngineJson(tagged);
+    expect(back['id'], 'abc-123');
+    expect(back['note'], 'hi');
+    expect(back['count'], 42);
+    expect(back['weight'], 180.5);
+    expect(back['on_date'], DateTime(2026, 6, 19));
+    expect(back['logged_at'], DateTime(2026, 6, 19, 9, 30, 15));
+    expect(back['empty'], null);
+    expect(back['flag'], true);
+  });
+
+  test('connectSheets throws EngineError on bad service-account JSON', () {
+    expect(
+      () => engine.connectSheets(
+        defaultSpreadsheetId: 'test-id',
+        serviceAccountJson: '{ not json',
+      ),
+      throwsA(isA<EngineError>().having(
+        (e) => e.message,
+        'message',
+        contains('service account json'),
+      )),
+    );
+  });
+
   test('parseViewPair fails when view_name does not match target', () {
     final view = '''
 name: foo

@@ -16,9 +16,14 @@
 //! directly serialized (no wrapper).
 
 use std::ffi::{c_char, CStr, CString};
+use std::sync::Mutex;
 
+use chrono::NaiveDate;
 use serde::Serialize;
 
+use crate::sheets::SheetsRepository;
+use crate::value::Record;
+use crate::ViewSchema;
 use crate::{apply_overlay, parse_input_overlay, parse_view};
 
 /// Returns the engine version. Stable identity string the Dart side
@@ -195,3 +200,219 @@ impl<'a> From<&'a crate::schema::overlay::InputOverlay> for FfiInputOverlay<'a> 
         }
     }
 }
+
+// =========================================================== sheets handle
+//
+// The sheets module is stateful (token cache, header cache, HTTP client).
+// We expose it as an opaque handle the Dart side holds across calls.
+// `SheetsRepository` itself is `!Sync` because it uses `RefCell` for the
+// caches, so we wrap it in `Mutex` to make the raw pointer safe to share
+// across threads in case Dart's isolate model ever needs it.
+
+/// Opaque handle the Dart side holds onto. Created by
+/// [`airledger_engine_sheets_connect`], freed by
+/// [`airledger_engine_sheets_free_handle`].
+pub struct SheetsHandle(Mutex<SheetsRepository>);
+
+/// Build a sheets repository. Returns NULL on failure; the heap-
+/// allocated error message goes through `error_out` (caller frees it
+/// via [`airledger_engine_free`]). Pass NULL for `error_out` to
+/// suppress error reporting.
+///
+/// # Safety
+/// `default_spreadsheet_id_ptr` and `service_account_json_ptr` must
+/// be valid nul-terminated UTF-8. `error_out` must be either NULL or
+/// a valid writable `*mut *mut c_char`.
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_sheets_connect(
+    default_spreadsheet_id_ptr: *const c_char,
+    service_account_json_ptr: *const c_char,
+    error_out: *mut *mut c_char,
+) -> *mut SheetsHandle {
+    let result = (|| -> Result<SheetsRepository, String> {
+        let sid = unsafe { c_str_to_str(default_spreadsheet_id_ptr) }?;
+        let sa = unsafe { c_str_to_str(service_account_json_ptr) }?;
+        SheetsRepository::new(sid.to_string(), sa).map_err(|e| e.to_string())
+    })();
+    match result {
+        Ok(repo) => {
+            if !error_out.is_null() {
+                unsafe { *error_out = std::ptr::null_mut() };
+            }
+            Box::into_raw(Box::new(SheetsHandle(Mutex::new(repo))))
+        }
+        Err(e) => {
+            if !error_out.is_null() {
+                unsafe { *error_out = string_to_ptr(e) };
+            }
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// Drop a handle from [`airledger_engine_sheets_connect`]. No-op on
+/// NULL.
+///
+/// # Safety
+/// Must be called at most once per handle, and the handle must not
+/// be used after this call.
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_sheets_free_handle(
+    handle: *mut SheetsHandle,
+) {
+    if !handle.is_null() {
+        drop(unsafe { Box::from_raw(handle) });
+    }
+}
+
+/// `ensure_sheet` over FFI. Returns `{"ok":true}` on success or
+/// `{"error":"..."}` on failure.
+///
+/// # Safety
+/// `handle` must be valid (from `_connect`). `view_json_ptr` must be
+/// a nul-terminated UTF-8 JSON [`ViewSchema`].
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_sheets_ensure(
+    handle: *mut SheetsHandle,
+    view_json_ptr: *const c_char,
+) -> *mut c_char {
+    sheets_call(handle, view_json_ptr, |repo, view| {
+        repo.ensure_sheet(view).map(|()| serde_json::json!({ "ok": true }))
+    })
+}
+
+/// `list` over FFI. `on_date_iso_ptr` may be NULL (no date filter) or
+/// `YYYY-MM-DD`. Returns a JSON array of records on success.
+///
+/// # Safety
+/// As [`airledger_engine_sheets_ensure`].
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_sheets_list(
+    handle: *mut SheetsHandle,
+    view_json_ptr: *const c_char,
+    on_date_iso_ptr: *const c_char,
+) -> *mut c_char {
+    let on_date = if on_date_iso_ptr.is_null() {
+        None
+    } else {
+        match unsafe { c_str_to_str(on_date_iso_ptr) } {
+            Ok(s) => match NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+                Ok(d) => Some(d),
+                Err(e) => return error_json(&format!("on_date parse: {e}")),
+            },
+            Err(e) => return error_json(&e),
+        }
+    };
+    sheets_call(handle, view_json_ptr, |repo, view| {
+        repo.list(view, on_date)
+    })
+}
+
+/// `create` over FFI. `record_json_ptr` is a JSON object with
+/// dimension-name keys and tagged `CellValue` values (see
+/// [`crate::value::CellValue`]'s serialization shape). Returns the
+/// inserted record (including any auto-assigned `id` and `__row = 0`).
+///
+/// # Safety
+/// As [`airledger_engine_sheets_ensure`].
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_sheets_create(
+    handle: *mut SheetsHandle,
+    view_json_ptr: *const c_char,
+    record_json_ptr: *const c_char,
+) -> *mut c_char {
+    let record = match parse_record_json(record_json_ptr) {
+        Ok(r) => r,
+        Err(e) => return error_json(&e),
+    };
+    sheets_call(handle, view_json_ptr, |repo, view| {
+        repo.create(view, record)
+    })
+}
+
+/// `update` over FFI. Same record shape as
+/// [`airledger_engine_sheets_create`]. Returns `{"ok":true}`.
+///
+/// # Safety
+/// As [`airledger_engine_sheets_ensure`].
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_sheets_update(
+    handle: *mut SheetsHandle,
+    view_json_ptr: *const c_char,
+    record_json_ptr: *const c_char,
+) -> *mut c_char {
+    let record = match parse_record_json(record_json_ptr) {
+        Ok(r) => r,
+        Err(e) => return error_json(&e),
+    };
+    sheets_call(handle, view_json_ptr, |repo, view| {
+        repo.update(view, record).map(|()| serde_json::json!({ "ok": true }))
+    })
+}
+
+/// `delete` over FFI. Same record shape as
+/// [`airledger_engine_sheets_create`]. Returns `{"ok":true}`.
+///
+/// # Safety
+/// As [`airledger_engine_sheets_ensure`].
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_sheets_delete(
+    handle: *mut SheetsHandle,
+    view_json_ptr: *const c_char,
+    record_json_ptr: *const c_char,
+) -> *mut c_char {
+    let record = match parse_record_json(record_json_ptr) {
+        Ok(r) => r,
+        Err(e) => return error_json(&e),
+    };
+    sheets_call(handle, view_json_ptr, |repo, view| {
+        repo.delete(view, &record).map(|()| serde_json::json!({ "ok": true }))
+    })
+}
+
+// ----------------------------------------------------- sheets helpers
+
+fn sheets_call<F, R>(
+    handle: *mut SheetsHandle,
+    view_json_ptr: *const c_char,
+    f: F,
+) -> *mut c_char
+where
+    R: Serialize,
+    F: FnOnce(&SheetsRepository, &ViewSchema) -> Result<R, crate::sheets::SheetsError>,
+{
+    if handle.is_null() {
+        return error_json("null handle");
+    }
+    let view_json = match unsafe { c_str_to_str(view_json_ptr) } {
+        Ok(s) => s,
+        Err(e) => return error_json(&e),
+    };
+    let view: ViewSchema = match serde_json::from_str(view_json) {
+        Ok(v) => v,
+        Err(e) => return error_json(&format!("view json: {e}")),
+    };
+    let handle = unsafe { &*handle };
+    let repo = match handle.0.lock() {
+        Ok(g) => g,
+        Err(_) => return error_json("handle mutex poisoned"),
+    };
+    match f(&repo, &view) {
+        Ok(value) => result_json(&value),
+        Err(e) => error_json(&e.to_string()),
+    }
+}
+
+fn parse_record_json(ptr: *const c_char) -> Result<Record, String> {
+    let json = unsafe { c_str_to_str(ptr) }?;
+    serde_json::from_str::<Record>(json).map_err(|e| format!("record json: {e}"))
+}
+
+// `CellValue` already implements Serialize/Deserialize with a tagged
+// envelope (`{"kind":"int","value":42}`). `Record = BTreeMap<String,
+// CellValue>` serializes to a flat object where each value is one of
+// those envelopes — that's the exact shape the Dart side will use.
+//
+// We re-export the type alias here so consumers reading the FFI source
+// can find the wire shape in one place.
+pub use crate::value::CellValue as FfiCellValue;

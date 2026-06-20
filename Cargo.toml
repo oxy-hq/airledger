@@ -25,7 +25,7 @@ serde_json = "1"
 serde_yaml = "0.9"
 thiserror = "1"
 # Dates / weekdays / ISO formatting — used by derives + codec round-trip.
-chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
 # Jinja-equivalent for template interpolation. Matches the Dart Jinja
 # semantics for `{{ var }}` and `{% if %}` blocks; we register a
 # `round` filter to mirror our custom Dart filter.
