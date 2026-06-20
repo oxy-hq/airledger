@@ -117,7 +117,7 @@ fn parse_body<T: serde::de::DeserializeOwned>(
             body,
         });
     }
-    resp.json().map_err(SheetsError::Http)
+    resp.json().map_err(SheetsError::from)
 }
 
 fn check_ok(resp: reqwest::blocking::Response) -> Result<(), SheetsError> {

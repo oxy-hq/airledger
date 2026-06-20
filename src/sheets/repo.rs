@@ -56,7 +56,7 @@ impl SheetsRepository {
             .connect_timeout(Duration::from_secs(15))
             .timeout(Duration::from_secs(60))
             .build()
-            .map_err(SheetsError::Http)?;
+            .map_err(SheetsError::from)?;
         Ok(Self {
             http,
             sa,

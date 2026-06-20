@@ -58,8 +58,8 @@ not necessary if we extract the engine cleanly.
 | 5 | WASM binding for Oxy customer-app bundle | ⏳ not started |
 | 6a | Smoke proof: engine loads + answers `version` on the device | ✅ shipped |
 | 6b | Schema cutover: `schema_parser` + `input_parser` routed through engine | ✅ shipped — `f790111` / `ef6785c` in archive |
-| 6c | Sheets FFI + Dart wrapper (`EngineSheetsRepository`) | ✅ shipped — this checkpoint (consumer cutover still pending) |
-| 6d | Archive sheets consumer cutover — swap `SheetsRepository` callsites onto engine | ⏳ not started |
+| 6c | Sheets FFI + Dart wrapper (`EngineSheetsRepository`) | ✅ shipped |
+| 6d | Archive sheets consumer cutover — UI typed against `WarehouseConnector`, engine-routed | ✅ shipped — validated on Pixel: strength view's 10 rows render via engine `list()` |
 | 7 | Drop in the engine on a React Oxy bundle (WASM consumer) | ⏳ not started |
 
 ## What lives where

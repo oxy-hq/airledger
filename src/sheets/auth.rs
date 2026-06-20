@@ -95,7 +95,7 @@ pub fn fetch_access_token(
             ("assertion", &assertion),
         ])
         .send()
-        .map_err(SheetsError::Http)?;
+        .map_err(SheetsError::from)?;
 
     let status = resp.status();
     if !status.is_success() {
@@ -103,7 +103,7 @@ pub fn fetch_access_token(
         return Err(SheetsError::TokenExchange(format!("{status}: {body}")));
     }
 
-    let body: TokenResponse = resp.json().map_err(SheetsError::Http)?;
+    let body: TokenResponse = resp.json().map_err(SheetsError::from)?;
     Ok(AccessToken {
         token: body.access_token,
         expires_at: Instant::now() + Duration::from_secs(body.expires_in),
