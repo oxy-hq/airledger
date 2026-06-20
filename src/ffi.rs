@@ -148,8 +148,13 @@ fn result_json<T: Serialize>(value: &T) -> *mut c_char {
 }
 
 fn error_json(msg: &str) -> *mut c_char {
-    let escaped = msg.replace('\\', "\\\\").replace('"', "\\\"");
-    string_to_ptr(format!("{{\"error\":\"{escaped}\"}}"))
+    // Use serde_json to build the object so every JSON-illegal char
+    // (control chars, embedded quotes, etc.) is escaped properly.
+    // The previous hand-rolled escape only handled `\` and `"`, so a
+    // 401 body containing a JSON sub-document with newlines broke the
+    // outer parse on the Dart side with "Control character in string".
+    let s = serde_json::json!({ "error": msg }).to_string();
+    string_to_ptr(s)
 }
 
 // ------------------------------------------------ FFI projection types
