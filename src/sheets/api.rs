@@ -73,8 +73,13 @@ impl<'a> Api<'a> {
         range: &str,
         row: Vec<Value>,
     ) -> Result<(), SheetsError> {
+        // USER_ENTERED makes Sheets parse incoming strings like a
+        // user typed them — "2026-06-20" becomes a real date, "8:55:00
+        // PM" a real time, "180" a real number. With RAW everything
+        // stays as text, which is why date/time cells used to display
+        // with a leading apostrophe in the UI.
         let url = format!(
-            "{BASE}/{}/values/{}?valueInputOption=RAW",
+            "{BASE}/{}/values/{}?valueInputOption=USER_ENTERED",
             urlencoding::encode(spreadsheet_id),
             urlencoding::encode(range),
         );

@@ -541,9 +541,22 @@ fn cell_to_json(v: CellValue) -> Value {
         CellValue::Float(n) => serde_json::Number::from_f64(n)
             .map(Value::Number)
             .unwrap_or(Value::Null),
-        CellValue::String(s) => Value::String(s),
+        // Strings starting with `=` would be interpreted as formulas
+        // by the USER_ENTERED value-input option. Prefix with `'` so
+        // Sheets stores them as literal text (the apostrophe gets
+        // stripped on display). Date/DateTime formats below never
+        // start with `=`, so they don't need the guard.
+        CellValue::String(s) => Value::String(escape_formula(s)),
         CellValue::Date(d) => Value::String(d.format("%Y-%m-%d").to_string()),
         CellValue::DateTime(dt) => Value::String(dt.format("%Y-%m-%dT%H:%M:%S").to_string()),
+    }
+}
+
+fn escape_formula(s: String) -> String {
+    if s.starts_with('=') {
+        format!("'{s}")
+    } else {
+        s
     }
 }
 
