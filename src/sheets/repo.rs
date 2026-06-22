@@ -98,12 +98,15 @@ impl SheetsRepository {
 
     /// Re-callable HTTP wrapper. Retries on transport errors (matches
     /// the Dart `_RetryingClient`'s "only retry exceptions, never
-    /// retry response codes" rule, so non-idempotent writes stay safe).
+    /// retry response codes" rule, so non-idempotent writes stay safe)
+    /// AND treats a 401 from the Sheets API as "token might be stale"
+    /// — clears the cached token and retries once with a fresh one.
     fn api<R, F>(&self, f: F) -> Result<R, SheetsError>
     where
         F: Fn(&Api) -> Result<R, SheetsError>,
     {
         let mut attempt = 0;
+        let mut auth_retried = false;
         loop {
             attempt += 1;
             let token = self.token_value()?;
@@ -113,10 +116,24 @@ impl SheetsRepository {
             };
             match f(&api) {
                 Ok(v) => return Ok(v),
-                Err(e) if attempt >= RETRY_ATTEMPTS || !is_transient(&e) => return Err(e),
-                Err(_) => std::thread::sleep(Duration::from_millis(
-                    RETRY_BASE_MS * (1 << (attempt - 1)),
-                )),
+                Err(e) => {
+                    // 401 with a cached token: assume the token went
+                    // bad mid-flight (deep-sleep clock skew, server-
+                    // side revoke, etc). Invalidate + retry once.
+                    if !auth_retried
+                        && matches!(&e, SheetsError::Api { status: 401, .. })
+                    {
+                        *self.token.borrow_mut() = None;
+                        auth_retried = true;
+                        continue;
+                    }
+                    if attempt >= RETRY_ATTEMPTS || !is_transient(&e) {
+                        return Err(e);
+                    }
+                    std::thread::sleep(Duration::from_millis(
+                        RETRY_BASE_MS * (1 << (attempt - 1)),
+                    ));
+                }
             }
         }
     }

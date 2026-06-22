@@ -4,7 +4,7 @@
 //! short-lived bearer token. Mirrors the `googleapis_auth` Dart side.
 //! Token caching lives one level up in [`super::repo::SheetsRepository`].
 
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use jsonwebtoken::{encode as jwt_encode, Algorithm, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
@@ -30,18 +30,28 @@ impl ServiceAccount {
     }
 }
 
-/// A live OAuth2 access token + the instant it stops being usable.
+/// A live OAuth2 access token + the wall-clock time it stops being
+/// usable.
+///
+/// `SystemTime` (not `Instant`) on purpose: `Instant` pauses while
+/// the device is in deep sleep on Android, so a phone that sleeps
+/// for >1h with a cached token would wake up thinking the token is
+/// still fresh — but Google's clock kept ticking, and the token has
+/// actually expired. Wall-clock advance keeps the cache honest at
+/// the cost of being sensitive to local clock jumps (which is fine
+/// here — the token's lifetime is a wall-clock thing on Google's
+/// side anyway).
 #[derive(Debug, Clone)]
 pub struct AccessToken {
     pub token: String,
-    pub expires_at: Instant,
+    pub expires_at: SystemTime,
 }
 
 impl AccessToken {
     /// Treat the token as expired 60s before the actual deadline so an
     /// in-flight request never races the refresh.
     pub fn is_fresh(&self) -> bool {
-        self.expires_at > Instant::now() + Duration::from_secs(60)
+        self.expires_at > SystemTime::now() + Duration::from_secs(60)
     }
 }
 
@@ -106,7 +116,7 @@ pub fn fetch_access_token(
     let body: TokenResponse = resp.json().map_err(SheetsError::from)?;
     Ok(AccessToken {
         token: body.access_token,
-        expires_at: Instant::now() + Duration::from_secs(body.expires_in),
+        expires_at: SystemTime::now() + Duration::from_secs(body.expires_in),
     })
 }
 
