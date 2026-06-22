@@ -569,8 +569,33 @@ fn retry<T, F: FnMut() -> Result<T, SheetsError>>(mut f: F) -> Result<T, SheetsE
 }
 
 fn is_transient(e: &SheetsError) -> bool {
-    match e {
-        SheetsError::Http(err) => err.is_connect() || err.is_timeout(),
-        _ => false,
+    let SheetsError::Http(err) = e else { return false };
+    if err.is_connect() || err.is_timeout() {
+        return true;
     }
+    // reqwest's typed predicates miss "request was sent but the
+    // socket was aborted mid-flight" — that's a Request-kind error
+    // with the real cause buried in the source chain. Walk it and
+    // look for the well-known cold-start race patterns the Dart
+    // `_RetryingClient` already covered.
+    let mut source: Option<&dyn std::error::Error> = Some(err);
+    while let Some(s) = source {
+        let msg = s.to_string().to_lowercase();
+        if msg.contains("connection abort")
+            || msg.contains("connection closed")
+            || msg.contains("connection reset")
+            || msg.contains("connection refused")
+            || msg.contains("connection terminated")
+            || msg.contains("broken pipe")
+            || msg.contains("handshake")
+            || msg.contains("software caused connection abort")
+            || msg.contains("unexpected eof")
+            || msg.contains("os error 104") // ECONNRESET
+            || msg.contains("os error 32")  // EPIPE
+        {
+            return true;
+        }
+        source = s.source();
+    }
+    false
 }
