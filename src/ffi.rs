@@ -434,6 +434,10 @@ use crate::sync::sync_views;
 pub struct LedgerHandle {
     store: Mutex<Store>,
     sheets: Mutex<SheetsRepository>,
+    /// Kept so sync can open its own SQLite connection — WAL lets the
+    /// UI's CRUD connection proceed while a sync is mid-flight, so a
+    /// save never waits on a running sync.
+    db_path: String,
 }
 
 /// Open the local store at `db_path` and prepare the sheets repo for
@@ -460,6 +464,7 @@ pub unsafe extern "C" fn airledger_engine_ledger_open(
         Ok(LedgerHandle {
             store: Mutex::new(store),
             sheets: Mutex::new(sheets),
+            db_path: db_path.to_string(),
         })
     })();
     match result {
@@ -619,11 +624,18 @@ pub unsafe extern "C" fn airledger_engine_ledger_sync(
         Err(e) => return error_json(&format!("views json: {e}")),
     };
     let handle = unsafe { &*handle };
-    let (store, sheets) = match (handle.store.lock(), handle.sheets.lock()) {
-        (Ok(s), Ok(sh)) => (s, sh),
-        _ => return error_json("handle mutex poisoned"),
+    // Own connection for the sync — the UI's store mutex stays free,
+    // so create/list during a sync run at full speed (WAL handles
+    // the write interleaving; busy_timeout covers the brief overlap).
+    let sync_store = match Store::open(&handle.db_path) {
+        Ok(s) => s,
+        Err(e) => return error_json(&e.to_string()),
     };
-    result_json(&sync_views(&store, &*sheets, &views))
+    let sheets = match handle.sheets.lock() {
+        Ok(g) => g,
+        Err(_) => return error_json("handle mutex poisoned"),
+    };
+    result_json(&sync_views(&sync_store, &*sheets, &views))
 }
 
 // ----------------------------------------------------- ledger helpers

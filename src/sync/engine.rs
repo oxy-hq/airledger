@@ -131,48 +131,32 @@ fn sync_one_inner(
     let plan = merge(&local, &remote_rows);
     res.conflicts = plan.conflicts;
 
-    // Ordering contract (see merge::Action docs): updates while the
-    // snapshot indexes are valid, then deletes bottom-up, then
-    // inserts. Local-only actions run in the first pass.
+    // Phase A — remote pushes only, no store writes. Ordering
+    // contract (see merge::Action docs): updates while the snapshot
+    // indexes are valid, then deletes bottom-up, then inserts. Each
+    // successful push queues its local commit; the first failure
+    // stops pushing but the successes still commit below.
     let mut updates = Vec::new();
     let mut deletes = Vec::new();
     let mut inserts = Vec::new();
+    let mut commits: Vec<CommitOp> = Vec::new();
     for a in &plan.actions {
         match a {
             Action::TakeRemote { id, data, row_index } => {
-                store
-                    .mark_synced(&view.name, id, data, Some(*row_index as i64))
-                    .map_err(|e| format!("take remote: {e}"))?;
-                res.pulled += 1;
+                commits.push(CommitOp::MarkSynced {
+                    id: id.clone(),
+                    data: data.clone(),
+                    sort_key: Some(*row_index as i64),
+                    pulled: true,
+                });
             }
             Action::DeleteLocal { id } => {
-                store
-                    .remove(&view.name, id)
-                    .map_err(|e| format!("local delete: {e}"))?;
-                res.deleted_local += 1;
+                commits.push(CommitOp::Remove { id: id.clone(), remote: false });
             }
             Action::PushUpdate { .. } => updates.push(a.clone()),
             Action::DeleteRemote { .. } => deletes.push(a.clone()),
             Action::PushInsert { .. } => inserts.push(a.clone()),
         }
-    }
-
-    for a in updates {
-        let Action::PushUpdate { id, row_index } = a else {
-            unreachable!()
-        };
-        let l = local_by_id
-            .get(id.as_str())
-            .expect("merge only names local ids");
-        let mut rec = l.data.clone();
-        rec.insert(ROW_INDEX_KEY.to_string(), CellValue::Int(row_index as i64));
-        remote
-            .push_update(view, &rec)
-            .map_err(|e| format!("push update: {e}"))?;
-        store
-            .mark_synced(&view.name, &id, &l.data, Some(row_index as i64))
-            .map_err(|e| format!("commit update: {e}"))?;
-        res.pushed += 1;
     }
 
     deletes.sort_by_key(|a| {
@@ -181,46 +165,115 @@ fn sync_one_inner(
         };
         std::cmp::Reverse(*row_index)
     });
-    for a in deletes {
-        let Action::DeleteRemote { id, row_index } = a else {
-            unreachable!()
-        };
-        remote
-            .push_delete(view, row_index)
-            .map_err(|e| format!("push delete: {e}"))?;
-        store
-            .remove(&view.name, &id)
-            .map_err(|e| format!("commit delete: {e}"))?;
-        res.deleted_remote += 1;
+
+    let mut push_err: Option<String> = None;
+    'push: {
+        for a in updates {
+            let Action::PushUpdate { id, row_index } = a else {
+                unreachable!()
+            };
+            let l = local_by_id
+                .get(id.as_str())
+                .expect("merge only names local ids");
+            let mut rec = l.data.clone();
+            rec.insert(ROW_INDEX_KEY.to_string(), CellValue::Int(row_index as i64));
+            if let Err(e) = remote.push_update(view, &rec) {
+                push_err = Some(format!("push update: {e}"));
+                break 'push;
+            }
+            commits.push(CommitOp::MarkSynced {
+                id,
+                data: l.data.clone(),
+                sort_key: Some(row_index as i64),
+                pulled: false,
+            });
+        }
+        for a in deletes {
+            let Action::DeleteRemote { id, row_index } = a else {
+                unreachable!()
+            };
+            if let Err(e) = remote.push_delete(view, row_index) {
+                push_err = Some(format!("push delete: {e}"));
+                break 'push;
+            }
+            commits.push(CommitOp::Remove { id, remote: true });
+        }
+        for a in inserts {
+            let Action::PushInsert { id } = a else {
+                unreachable!()
+            };
+            let l = local_by_id
+                .get(id.as_str())
+                .expect("merge only names local ids");
+            if let Err(e) = remote.push_insert(view, &l.data) {
+                push_err = Some(format!("push insert: {e}"));
+                break 'push;
+            }
+            commits.push(CommitOp::MarkSynced {
+                id,
+                data: l.data.clone(),
+                sort_key: None,
+                pulled: false,
+            });
+        }
     }
 
-    for a in inserts {
-        let Action::PushInsert { id } = a else {
-            unreachable!()
-        };
-        let l = local_by_id
-            .get(id.as_str())
-            .expect("merge only names local ids");
-        remote
-            .push_insert(view, &l.data)
-            .map_err(|e| format!("push insert: {e}"))?;
-        store
-            .mark_synced(&view.name, &id, &l.data, None)
-            .map_err(|e| format!("commit insert: {e}"))?;
-        res.pushed += 1;
-    }
-
-    // Refresh sheet-order keys for rows untouched this round.
-    for r in &remote_rows {
-        store
-            .set_sort_key(&view.name, &r.id, r.row_index as i64)
-            .map_err(|e| format!("sort key: {e}"))?;
-    }
+    // Phase B — one write transaction for every local mutation this
+    // sync earned: pulled rows, push commits, sheet-order keys. A
+    // 33k-row hydration lands as a single fsync instead of one per
+    // row, and the UI's connection is blocked for milliseconds, not
+    // the sync's whole lifetime.
     store
-        .meta_set(
-            &format!("last_sync_{}", view.name),
-            &chrono::Utc::now().to_rfc3339(),
-        )
-        .map_err(|e| format!("meta: {e}"))?;
-    Ok(())
+        .tx(|s| {
+            for op in &commits {
+                match op {
+                    CommitOp::MarkSynced { id, data, sort_key, pulled } => {
+                        s.mark_synced(&view.name, id, data, *sort_key)?;
+                        if *pulled {
+                            res.pulled += 1;
+                        } else {
+                            res.pushed += 1;
+                        }
+                    }
+                    CommitOp::Remove { id, remote: was_remote } => {
+                        s.remove(&view.name, id)?;
+                        if *was_remote {
+                            res.deleted_remote += 1;
+                        } else {
+                            res.deleted_local += 1;
+                        }
+                    }
+                }
+            }
+            for r in &remote_rows {
+                s.set_sort_key(&view.name, &r.id, r.row_index as i64)?;
+            }
+            if push_err.is_none() {
+                s.meta_set(
+                    &format!("last_sync_{}", view.name),
+                    &chrono::Utc::now().to_rfc3339(),
+                )?;
+            }
+            Ok(())
+        })
+        .map_err(|e| format!("commit: {e}"))?;
+
+    match push_err {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
+}
+
+/// A deferred local mutation, applied in the phase-B transaction.
+enum CommitOp {
+    MarkSynced {
+        id: String,
+        data: Record,
+        sort_key: Option<i64>,
+        pulled: bool,
+    },
+    Remove {
+        id: String,
+        remote: bool,
+    },
 }

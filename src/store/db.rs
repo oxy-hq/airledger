@@ -28,6 +28,10 @@ impl Store {
     pub fn open(path: &str) -> Result<Self, StoreError> {
         let conn = Connection::open(path)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
+        // Multiple connections share the file (UI CRUD + sync run on
+        // separate connections); wait out the other writer's brief
+        // lock instead of failing with SQLITE_BUSY.
+        conn.busy_timeout(std::time::Duration::from_millis(5000))?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS rows (
                view_name  TEXT NOT NULL,
@@ -246,6 +250,26 @@ impl Store {
             rusqlite::params![view_name, id],
         )?;
         Ok(())
+    }
+
+    /// Run `f` inside one write transaction. Sync uses this to land
+    /// a whole view's commits (thousands of upserts on first
+    /// hydration) as a single fsync instead of one per statement.
+    pub fn tx<T>(
+        &self,
+        f: impl FnOnce(&Self) -> Result<T, StoreError>,
+    ) -> Result<T, StoreError> {
+        self.conn.execute_batch("BEGIN IMMEDIATE")?;
+        match f(self) {
+            Ok(v) => {
+                self.conn.execute_batch("COMMIT")?;
+                Ok(v)
+            }
+            Err(e) => {
+                let _ = self.conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
     }
 
     /// Refresh a clean row's sheet-order key after a pull.

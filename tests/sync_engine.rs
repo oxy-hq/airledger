@@ -211,3 +211,78 @@ fn push_failure_keeps_dirty_for_retry() {
     assert!(results[0].error.is_none(), "{:?}", results[0].error);
     assert_eq!(store.pending_count().unwrap(), 0);
 }
+
+#[test]
+fn partial_push_failure_commits_successes_keeps_rest_dirty() {
+    let store = temp_store("partial");
+    let view = parse_view(WEIGHT_VIEW).unwrap();
+    let remote = FailAfterOne::default();
+    store.create(&view, rec("", 1.0)).unwrap();
+    store.create(&view, rec("", 2.0)).unwrap();
+    let results = sync_views(&store, &remote, &[view.clone()]);
+    assert!(results[0].error.is_some(), "second push should fail");
+    assert_eq!(
+        store.pending_count().unwrap(),
+        1,
+        "the push that succeeded must be committed; the failed one stays dirty"
+    );
+    assert_eq!(remote.rows.borrow().len(), 1);
+}
+
+/// Remote that lets exactly one push through, then errors.
+#[derive(Default)]
+struct FailAfterOne {
+    rows: RefCell<Vec<Record>>,
+    pushes: std::cell::Cell<usize>,
+}
+
+impl FailAfterOne {
+    fn gate(&self) -> Result<(), SheetsError> {
+        let n = self.pushes.get();
+        self.pushes.set(n + 1);
+        if n >= 1 {
+            return Err(SheetsError::Other("boom".into()));
+        }
+        Ok(())
+    }
+}
+
+impl SyncRemote for FailAfterOne {
+    fn ensure(&self, _view: &ViewSchema) -> Result<(), SheetsError> {
+        Ok(())
+    }
+    fn pull(&self, _view: &ViewSchema) -> Result<Vec<Record>, SheetsError> {
+        Ok(self
+            .rows
+            .borrow()
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let mut r = r.clone();
+                r.insert("__row".into(), CellValue::Int(i as i64));
+                r
+            })
+            .collect())
+    }
+    fn push_update(&self, _view: &ViewSchema, record: &Record) -> Result<(), SheetsError> {
+        self.gate()?;
+        let idx = match record.get("__row") {
+            Some(CellValue::Int(i)) => *i as usize,
+            _ => panic!(),
+        };
+        let mut clean = record.clone();
+        clean.remove("__row");
+        self.rows.borrow_mut()[idx] = clean;
+        Ok(())
+    }
+    fn push_insert(&self, _view: &ViewSchema, record: &Record) -> Result<(), SheetsError> {
+        self.gate()?;
+        self.rows.borrow_mut().insert(0, record.clone());
+        Ok(())
+    }
+    fn push_delete(&self, _view: &ViewSchema, row_index: usize) -> Result<(), SheetsError> {
+        self.gate()?;
+        self.rows.borrow_mut().remove(row_index);
+        Ok(())
+    }
+}
