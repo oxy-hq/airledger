@@ -9,6 +9,7 @@
 pub mod eval;
 pub mod ffi;
 pub mod parse;
+pub mod records;
 pub mod schema;
 pub mod sheets;
 pub mod store;
