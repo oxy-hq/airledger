@@ -59,11 +59,29 @@ pub fn merge(local: &[LocalRow], remote: &[RemoteRow]) -> MergePlan {
             continue;
         }
         match (&l.base, r) {
-            // Never synced: push as a new sheet row. (A remote row
-            // with the same UUID shouldn't exist; if it does, the
-            // insert-at-top still wins visibly and the next pull
-            // reconciles — acceptable for UUID collisions.)
-            (None, _) => plan.actions.push(Action::PushInsert { id: l.id.clone() }),
+            // Never synced with no remote counterpart: push as a new
+            // sheet row.
+            (None, None) => plan.actions.push(Action::PushInsert { id: l.id.clone() }),
+            // Never synced but the id already exists remotely — the
+            // crash window between a successful push_insert and its
+            // local commit. Identical data: just commit locally.
+            // Divergent data: app wins, overwrite in place. Either
+            // way, never insert a duplicate row.
+            (None, Some(r)) => {
+                if r.data == l.data {
+                    plan.actions.push(Action::TakeRemote {
+                        id: l.id.clone(),
+                        data: r.data.clone(),
+                        row_index: r.row_index,
+                    });
+                } else {
+                    plan.conflicts += 1;
+                    plan.actions.push(Action::PushUpdate {
+                        id: l.id.clone(),
+                        row_index: r.row_index,
+                    });
+                }
+            }
             (Some(base), Some(r)) => {
                 let remote_changed = r.data != *base;
                 match (l.dirty, remote_changed) {

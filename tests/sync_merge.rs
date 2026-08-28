@@ -86,3 +86,20 @@ fn dirty_with_remote_gone_reinserts_app_wins() {
     assert!(matches!(plan.actions[..], [Action::PushInsert { .. }]));
     assert_eq!(plan.conflicts, 1);
 }
+
+#[test]
+fn new_local_row_already_present_remotely_identical_commits_without_insert() {
+    // Crash window: push_insert succeeded but the local commit didn't
+    // land. Next sync must NOT insert a duplicate — identical remote
+    // row with the same id just commits locally.
+    let plan = merge(&[local(r(1.0), None, true, false)], &[remote(r(1.0))]);
+    assert!(matches!(plan.actions[..], [Action::TakeRemote { .. }]));
+    assert_eq!(plan.conflicts, 0);
+}
+
+#[test]
+fn new_local_row_id_collision_different_data_app_wins() {
+    let plan = merge(&[local(r(2.0), None, true, false)], &[remote(r(1.0))]);
+    assert!(matches!(plan.actions[..], [Action::PushUpdate { .. }]));
+    assert_eq!(plan.conflicts, 1);
+}
