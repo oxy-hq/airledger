@@ -130,3 +130,48 @@ fn open_creates_schema_and_is_idempotent() {
     );
     std::fs::remove_file(&path).ok();
 }
+
+#[test]
+fn list_filters_by_date_and_sorts_by_log_time() {
+    let store = temp_store("datefilter");
+    // date_field + plannable only enter a ViewSchema via the input
+    // overlay, so build the fixture the way the app does.
+    let base = parse_view(
+        r#"
+name: strength
+datasource: gsheets
+table: strength
+dimensions:
+  - { name: id, type: string, expr: id }
+  - { name: date, type: date, expr: date }
+  - { name: time, type: string, expr: time }
+"#,
+    )
+    .unwrap();
+    let overlay = airledger_engine::parse_input_overlay(
+        r#"
+target: strength.view.yml
+date_field: date
+plannable:
+  log_field: time
+  log_format: time_string
+"#,
+    )
+    .unwrap();
+    let view = airledger_engine::apply_overlay(base, overlay).unwrap();
+    let d = |s: &str| CellValue::Date(chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap());
+    store
+        .create(&view, rec(&[("date", d("2026-08-27")), ("time", CellValue::String("18:00".into()))]))
+        .unwrap();
+    store
+        .create(&view, rec(&[("date", d("2026-08-27")), ("time", CellValue::String("07:30".into()))]))
+        .unwrap();
+    store
+        .create(&view, rec(&[("date", d("2026-08-26")), ("time", CellValue::String("09:00".into()))]))
+        .unwrap();
+
+    let on = chrono::NaiveDate::parse_from_str("2026-08-27", "%Y-%m-%d").unwrap();
+    let listed = store.list(&view, Some(on)).unwrap();
+    assert_eq!(listed.len(), 2);
+    assert_eq!(listed[0].get("time"), Some(&CellValue::String("07:30".into())));
+}
