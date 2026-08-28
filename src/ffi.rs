@@ -421,3 +421,240 @@ fn parse_record_json(ptr: *const c_char) -> Result<Record, String> {
 // We re-export the type alias here so consumers reading the FFI source
 // can find the wire shape in one place.
 pub use crate::value::CellValue as FfiCellValue;
+
+// ========================================================== ledger handle
+//
+// Local-first store + sync. Mirrors the sheets handle pattern: the
+// store and the sheets repo live behind one opaque handle; local CRUD
+// never touches the network, sync does.
+
+use crate::store::{Store, StoreError};
+use crate::sync::sync_views;
+
+pub struct LedgerHandle {
+    store: Mutex<Store>,
+    sheets: Mutex<SheetsRepository>,
+}
+
+/// Open the local store at `db_path` and prepare the sheets repo for
+/// sync. No network here — credentials are parsed, not exercised.
+/// Returns NULL on failure with the message in `error_out`.
+///
+/// # Safety
+/// String pointers must be valid nul-terminated UTF-8. `error_out`
+/// must be NULL or a valid writable `*mut *mut c_char`.
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_ledger_open(
+    db_path_ptr: *const c_char,
+    default_spreadsheet_id_ptr: *const c_char,
+    service_account_json_ptr: *const c_char,
+    error_out: *mut *mut c_char,
+) -> *mut LedgerHandle {
+    let result = (|| -> Result<LedgerHandle, String> {
+        let db_path = unsafe { c_str_to_str(db_path_ptr) }?;
+        let sid = unsafe { c_str_to_str(default_spreadsheet_id_ptr) }?;
+        let sa = unsafe { c_str_to_str(service_account_json_ptr) }?;
+        let store = Store::open(db_path).map_err(|e| e.to_string())?;
+        let sheets =
+            SheetsRepository::new(sid.to_string(), sa).map_err(|e| e.to_string())?;
+        Ok(LedgerHandle {
+            store: Mutex::new(store),
+            sheets: Mutex::new(sheets),
+        })
+    })();
+    match result {
+        Ok(h) => {
+            if !error_out.is_null() {
+                unsafe { *error_out = std::ptr::null_mut() };
+            }
+            Box::into_raw(Box::new(h))
+        }
+        Err(e) => {
+            if !error_out.is_null() {
+                unsafe { *error_out = string_to_ptr(e) };
+            }
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// # Safety
+/// At most once per handle; handle unusable afterwards.
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_ledger_free_handle(handle: *mut LedgerHandle) {
+    if !handle.is_null() {
+        drop(unsafe { Box::from_raw(handle) });
+    }
+}
+
+/// Local `list` — no network. `on_date_iso_ptr` may be NULL or
+/// `YYYY-MM-DD`. Returns a JSON array of tagged-envelope records.
+///
+/// # Safety
+/// `handle` from `_ledger_open`; strings nul-terminated UTF-8.
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_ledger_list(
+    handle: *mut LedgerHandle,
+    view_json_ptr: *const c_char,
+    on_date_iso_ptr: *const c_char,
+) -> *mut c_char {
+    let on_date = if on_date_iso_ptr.is_null() {
+        None
+    } else {
+        match unsafe { c_str_to_str(on_date_iso_ptr) } {
+            Ok(s) => match NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+                Ok(d) => Some(d),
+                Err(e) => return error_json(&format!("on_date parse: {e}")),
+            },
+            Err(e) => return error_json(&e),
+        }
+    };
+    ledger_call(handle, view_json_ptr, |store, view| store.list(view, on_date))
+}
+
+/// Local `create` — same record envelope as the sheets FFI. Returns
+/// the stored record (with any auto-assigned `id`).
+///
+/// # Safety
+/// As [`airledger_engine_ledger_list`].
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_ledger_create(
+    handle: *mut LedgerHandle,
+    view_json_ptr: *const c_char,
+    record_json_ptr: *const c_char,
+) -> *mut c_char {
+    let record = match parse_record_json(record_json_ptr) {
+        Ok(r) => r,
+        Err(e) => return error_json(&e),
+    };
+    ledger_call(handle, view_json_ptr, |store, view| store.create(view, record))
+}
+
+/// Local `update` — addresses by `id`. Returns `{"ok":true}`.
+///
+/// # Safety
+/// As [`airledger_engine_ledger_list`].
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_ledger_update(
+    handle: *mut LedgerHandle,
+    view_json_ptr: *const c_char,
+    record_json_ptr: *const c_char,
+) -> *mut c_char {
+    let record = match parse_record_json(record_json_ptr) {
+        Ok(r) => r,
+        Err(e) => return error_json(&e),
+    };
+    ledger_call(handle, view_json_ptr, |store, view| {
+        store
+            .update(view, record)
+            .map(|()| serde_json::json!({ "ok": true }))
+    })
+}
+
+/// Local `delete` — tombstones synced rows, removes unsynced ones.
+/// Returns `{"ok":true}`.
+///
+/// # Safety
+/// As [`airledger_engine_ledger_list`].
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_ledger_delete(
+    handle: *mut LedgerHandle,
+    view_json_ptr: *const c_char,
+    record_json_ptr: *const c_char,
+) -> *mut c_char {
+    let record = match parse_record_json(record_json_ptr) {
+        Ok(r) => r,
+        Err(e) => return error_json(&e),
+    };
+    ledger_call(handle, view_json_ptr, |store, view| {
+        store
+            .delete(view, &record)
+            .map(|()| serde_json::json!({ "ok": true }))
+    })
+}
+
+/// Pending (un-pushed) change count: `{"pending": N}`.
+///
+/// # Safety
+/// `handle` must be a valid ledger handle.
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_ledger_pending(
+    handle: *mut LedgerHandle,
+) -> *mut c_char {
+    if handle.is_null() {
+        return error_json("null handle");
+    }
+    let handle = unsafe { &*handle };
+    let store = match handle.store.lock() {
+        Ok(g) => g,
+        Err(_) => return error_json("store mutex poisoned"),
+    };
+    match store.pending_count() {
+        Ok(n) => result_json(&serde_json::json!({ "pending": n })),
+        Err(e) => error_json(&e.to_string()),
+    }
+}
+
+/// Run a full sync for every view in `views_json_ptr` (a JSON array
+/// of ViewSchema). Returns the JSON array of per-view results —
+/// individual view failures land in each result's `error` field, so
+/// this call only returns `{"error": ...}` for input-shape problems.
+///
+/// # Safety
+/// `handle` valid; `views_json_ptr` nul-terminated UTF-8.
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_ledger_sync(
+    handle: *mut LedgerHandle,
+    views_json_ptr: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() {
+        return error_json("null handle");
+    }
+    let views_json = match unsafe { c_str_to_str(views_json_ptr) } {
+        Ok(s) => s,
+        Err(e) => return error_json(&e),
+    };
+    let views: Vec<ViewSchema> = match serde_json::from_str(views_json) {
+        Ok(v) => v,
+        Err(e) => return error_json(&format!("views json: {e}")),
+    };
+    let handle = unsafe { &*handle };
+    let (store, sheets) = match (handle.store.lock(), handle.sheets.lock()) {
+        (Ok(s), Ok(sh)) => (s, sh),
+        _ => return error_json("handle mutex poisoned"),
+    };
+    result_json(&sync_views(&store, &*sheets, &views))
+}
+
+// ----------------------------------------------------- ledger helpers
+
+fn ledger_call<F, R>(
+    handle: *mut LedgerHandle,
+    view_json_ptr: *const c_char,
+    f: F,
+) -> *mut c_char
+where
+    R: Serialize,
+    F: FnOnce(&Store, &ViewSchema) -> Result<R, StoreError>,
+{
+    if handle.is_null() {
+        return error_json("null handle");
+    }
+    let view_json = match unsafe { c_str_to_str(view_json_ptr) } {
+        Ok(s) => s,
+        Err(e) => return error_json(&e),
+    };
+    let view: ViewSchema = match serde_json::from_str(view_json) {
+        Ok(v) => v,
+        Err(e) => return error_json(&format!("view json: {e}")),
+    };
+    let handle = unsafe { &*handle };
+    let store = match handle.store.lock() {
+        Ok(g) => g,
+        Err(_) => return error_json("store mutex poisoned"),
+    };
+    match f(&store, &view) {
+        Ok(value) => result_json(&value),
+        Err(e) => error_json(&e.to_string()),
+    }
+}

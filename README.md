@@ -30,6 +30,9 @@ build outputs.
 - ✅ Phase 4a — Dart FFI binding, host build (`sdk-dart/`).
 - ✅ Phase 4b — Android / iOS build scripts (`sdk-dart/scripts/`).
 - ⏳ Phase 5 — WASM binding for Oxy customer-app bundles.
+- ✅ Phase 8 — local-first store + sync engine (`store/`, `sync/`,
+     ledger FFI + `EngineLedgerRepository`): SQLite is the app's
+     source of truth, Sheets syncs bidirectionally (app wins).
 
 See [`docs/port-plan.md`](docs/port-plan.md) for the full plan,
 architectural decisions, and how to continue mid-stream.

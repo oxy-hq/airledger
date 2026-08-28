@@ -61,6 +61,8 @@ not necessary if we extract the engine cleanly.
 | 6c | Sheets FFI + Dart wrapper (`EngineSheetsRepository`) | ✅ shipped |
 | 6d | Archive sheets consumer cutover — UI typed against `WarehouseConnector`, engine-routed | ✅ shipped — validated on Pixel: strength view's 10 rows render via engine `list()` |
 | 7 | Drop in the engine on a React Oxy bundle (WASM consumer) | ⏳ not started |
+| 8 | Local-first store + sync engine (SQLite source of truth, bidirectional Sheets sync, app-wins conflicts) | ✅ shipped — spec `docs/superpowers/specs/2026-08-27-local-first-sync-design.md` |
+| 8b | Archive app cutover to `EngineLedgerRepository` + `SyncScheduler` (wifi-gated auto-sync) | see follow-ups below |
 
 ## What lives where
 
@@ -222,3 +224,26 @@ If you're picking this up after a context wipe:
    `~/repos/airledger-archive/lib/services/sheets_repository.dart`.
    Compare to `src/sheets/repo.rs` to confirm parity on edge cases
    (especially the `__row` resolution + additive header merge).
+
+
+## Phase 8 follow-ups — archive app sync wiring
+
+The engine side of local-first sync shipped in phase 8 (`store/`,
+`sync/`, ledger FFI, `EngineLedgerRepository` in sdk-dart). The
+remaining work lives in the archive app repo:
+
+- Swap the `WarehouseConnector` implementation from
+  `EngineSheetsRepository` to `EngineLedgerRepository`
+  (`openLedger(dbPath: <app documents dir>/ledger.db, ...)`). The
+  record wire shape is identical, so screens don't change.
+- Add `SyncScheduler`: listens to `connectivity_plus`; triggers
+  `ledger.sync(views)` on app start, app resume, ~5 s debounce after
+  local writes, and when wifi appears with `ledger.pending() > 0`.
+  One sync at a time; skip triggers while one runs.
+- Setting: `Sync on Wi-Fi only` toggle, default ON (off = cellular
+  allowed), in shared prefs.
+- Status surface: last-synced stamp + pending-count badge (ledger
+  drawer), no blocking spinners.
+- Reconcile the `body_fat_withing` column: present in the weight
+  sheet but not yet in `airledger-fitness/views/weight.view.yml` —
+  add the dimension so sync + ensure_sheet know about it.

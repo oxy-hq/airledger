@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::time::Duration;
 
-use chrono::{NaiveDate, NaiveTime};
+use chrono::NaiveDate;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -236,37 +236,7 @@ impl SheetsRepository {
             records.push(record);
         }
 
-        let Some(on_date) = on_date else {
-            return Ok(records);
-        };
-        let Some(date_field) = view.date_field.clone() else {
-            return Ok(records);
-        };
-
-        let mut filtered: Vec<Record> = records
-            .into_iter()
-            .filter(|r| matches!(r.get(&date_field), Some(CellValue::Date(d)) if *d == on_date))
-            .collect();
-
-        let log_field = view.plannable.as_ref().map(|p| p.log_field.clone());
-        filtered.sort_by(|a, b| {
-            if let Some(ref lf) = log_field {
-                let av = a.get(lf).map(|v| v.to_display_string()).unwrap_or_default();
-                let bv = b.get(lf).map(|v| v.to_display_string()).unwrap_or_default();
-                match (av.is_empty(), bv.is_empty()) {
-                    (true, true) => std::cmp::Ordering::Equal,
-                    (true, false) => std::cmp::Ordering::Greater,
-                    (false, true) => std::cmp::Ordering::Less,
-                    (false, false) => match (parse_time(&av), parse_time(&bv)) {
-                        (Some(a), Some(b)) => a.cmp(&b),
-                        _ => av.cmp(&bv),
-                    },
-                }
-            } else {
-                row_index(a).cmp(&row_index(b))
-            }
-        });
-        Ok(filtered)
+        Ok(crate::records::filter_and_sort(view, records, on_date))
     }
 
     /// Insert a new record at sheet row 2 (top of data). Auto-assigns
@@ -516,13 +486,6 @@ fn row_to_record(view: &ViewSchema, headers: &[String], row: &[Value]) -> Record
     record
 }
 
-fn row_index(r: &Record) -> i64 {
-    match r.get(ROW_INDEX_KEY) {
-        Some(CellValue::Int(n)) => *n,
-        _ => 0,
-    }
-}
-
 fn value_to_string(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
@@ -558,26 +521,6 @@ fn escape_formula(s: String) -> String {
     } else {
         s
     }
-}
-
-/// Parse a time-of-day string into a `NaiveTime` for chronological
-/// sort. Tries 12-hour (`h:mm:ss AM`, `h:mm AM`) then 24-hour
-/// (`H:mm:ss`, `H:mm`) — matches the formats `_parseTime` in
-/// `sheets_repository.dart` recognizes.
-fn parse_time(s: &str) -> Option<NaiveTime> {
-    for fmt in &[
-        "%-I:%M:%S %p",
-        "%-I:%M %p",
-        "%I:%M:%S %p",
-        "%I:%M %p",
-        "%H:%M:%S",
-        "%H:%M",
-    ] {
-        if let Ok(t) = NaiveTime::parse_from_str(s, fmt) {
-            return Some(t);
-        }
-    }
-    None
 }
 
 /// Retry `f` up to `RETRY_ATTEMPTS` times with exponential backoff,
