@@ -39,6 +39,9 @@ jsonwebtoken = "9"
 uuid = { version = "1", features = ["v4"] }
 # Percent-encode tab names in Sheets API URLs (apostrophes, spaces).
 urlencoding = "2"
+# Local-first store. `bundled` compiles SQLite from source so Android
+# NDK / iOS cross-builds don't need a system libsqlite3.
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 # Tests load actual YAML files via include_str! so changes in the
