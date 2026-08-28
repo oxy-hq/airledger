@@ -49,6 +49,33 @@ typedef _SheetsOpTwoNative = ffi.Pointer<ffi.Char> Function(
   ffi.Pointer<ffi.Char>,
 );
 
+// --- ledger handle ---
+// Opaque pointer to a Rust LedgerHandle (local store + sheets repo).
+typedef LedgerHandle = ffi.Void;
+
+typedef _LedgerOpenNative = ffi.Pointer<LedgerHandle> Function(
+  ffi.Pointer<ffi.Char>,
+  ffi.Pointer<ffi.Char>,
+  ffi.Pointer<ffi.Char>,
+  ffi.Pointer<ffi.Pointer<ffi.Char>>,
+);
+typedef _LedgerFreeHandleNative = ffi.Void Function(
+  ffi.Pointer<LedgerHandle>,
+);
+typedef _LedgerFreeHandleDart = void Function(ffi.Pointer<LedgerHandle>);
+typedef _LedgerOpOneNative = ffi.Pointer<ffi.Char> Function(
+  ffi.Pointer<LedgerHandle>,
+);
+typedef _LedgerOpTwoNative = ffi.Pointer<ffi.Char> Function(
+  ffi.Pointer<LedgerHandle>,
+  ffi.Pointer<ffi.Char>,
+);
+typedef _LedgerOpThreeNative = ffi.Pointer<ffi.Char> Function(
+  ffi.Pointer<LedgerHandle>,
+  ffi.Pointer<ffi.Char>,
+  ffi.Pointer<ffi.Char>,
+);
+
 class EngineBindings {
   EngineBindings(ffi.DynamicLibrary lib)
       : version = lib
@@ -101,7 +128,42 @@ class EngineBindings {
             .asFunction(),
         sheetsFreeHandlePtr = lib
             .lookup<ffi.NativeFunction<_SheetsFreeHandleNative>>(
-                'airledger_engine_sheets_free_handle');
+                'airledger_engine_sheets_free_handle'),
+        ledgerOpen = lib
+            .lookup<ffi.NativeFunction<_LedgerOpenNative>>(
+                'airledger_engine_ledger_open')
+            .asFunction(),
+        ledgerFreeHandle = lib
+            .lookup<ffi.NativeFunction<_LedgerFreeHandleNative>>(
+                'airledger_engine_ledger_free_handle')
+            .asFunction(),
+        ledgerList = lib
+            .lookup<ffi.NativeFunction<_LedgerOpThreeNative>>(
+                'airledger_engine_ledger_list')
+            .asFunction(),
+        ledgerCreate = lib
+            .lookup<ffi.NativeFunction<_LedgerOpThreeNative>>(
+                'airledger_engine_ledger_create')
+            .asFunction(),
+        ledgerUpdate = lib
+            .lookup<ffi.NativeFunction<_LedgerOpThreeNative>>(
+                'airledger_engine_ledger_update')
+            .asFunction(),
+        ledgerDelete = lib
+            .lookup<ffi.NativeFunction<_LedgerOpThreeNative>>(
+                'airledger_engine_ledger_delete')
+            .asFunction(),
+        ledgerPending = lib
+            .lookup<ffi.NativeFunction<_LedgerOpOneNative>>(
+                'airledger_engine_ledger_pending')
+            .asFunction(),
+        ledgerSync = lib
+            .lookup<ffi.NativeFunction<_LedgerOpTwoNative>>(
+                'airledger_engine_ledger_sync')
+            .asFunction(),
+        ledgerFreeHandlePtr = lib
+            .lookup<ffi.NativeFunction<_LedgerFreeHandleNative>>(
+                'airledger_engine_ledger_free_handle');
 
   final ffi.Pointer<ffi.Char> Function() version;
   final ffi.Pointer<ffi.Char> Function(ffi.Pointer<ffi.Char>) parseView;
@@ -149,4 +211,42 @@ class EngineBindings {
   /// so `Finalizer` can call it from the GC thread.
   final ffi.Pointer<ffi.NativeFunction<_SheetsFreeHandleNative>>
       sheetsFreeHandlePtr;
+
+  // ledger handle
+  final ffi.Pointer<LedgerHandle> Function(
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Pointer<ffi.Char>>,
+  ) ledgerOpen;
+  final _LedgerFreeHandleDart ledgerFreeHandle;
+  final ffi.Pointer<ffi.Char> Function(
+    ffi.Pointer<LedgerHandle>,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Char>,
+  ) ledgerList;
+  final ffi.Pointer<ffi.Char> Function(
+    ffi.Pointer<LedgerHandle>,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Char>,
+  ) ledgerCreate;
+  final ffi.Pointer<ffi.Char> Function(
+    ffi.Pointer<LedgerHandle>,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Char>,
+  ) ledgerUpdate;
+  final ffi.Pointer<ffi.Char> Function(
+    ffi.Pointer<LedgerHandle>,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Char>,
+  ) ledgerDelete;
+  final ffi.Pointer<ffi.Char> Function(ffi.Pointer<LedgerHandle>) ledgerPending;
+  final ffi.Pointer<ffi.Char> Function(
+    ffi.Pointer<LedgerHandle>,
+    ffi.Pointer<ffi.Char>,
+  ) ledgerSync;
+
+  /// Native pointer for `ledger_free_handle` — for the `Finalizer`.
+  final ffi.Pointer<ffi.NativeFunction<_LedgerFreeHandleNative>>
+      ledgerFreeHandlePtr;
 }

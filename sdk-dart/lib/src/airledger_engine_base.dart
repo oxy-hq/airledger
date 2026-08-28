@@ -262,6 +262,236 @@ class EngineSheetsRepository {
   }
 }
 
+/// Open a local-first ledger backed by the engine: SQLite store as
+/// source of truth, Sheets as the sync target. CRUD never touches
+/// the network; only [EngineLedgerRepository.sync] does.
+extension AirledgerEngineLedger on AirledgerEngine {
+  /// Throws [EngineError] when the DB can't be opened or the service
+  /// account JSON is malformed (credentials are parsed, not
+  /// exercised — opening works offline).
+  EngineLedgerRepository openLedger({
+    required String dbPath,
+    required String defaultSpreadsheetId,
+    required String serviceAccountJson,
+  }) {
+    final dbPtr = dbPath.toNativeUtf8().cast<ffi.Char>();
+    final sidPtr = defaultSpreadsheetId.toNativeUtf8().cast<ffi.Char>();
+    final saPtr = serviceAccountJson.toNativeUtf8().cast<ffi.Char>();
+    final errOut = calloc<ffi.Pointer<ffi.Char>>();
+    try {
+      final handle = _b.ledgerOpen(dbPtr, sidPtr, saPtr, errOut);
+      if (handle == ffi.nullptr) {
+        final errPtr = errOut.value;
+        final msg = errPtr == ffi.nullptr
+            ? 'ledger open failed (no error message)'
+            : errPtr.cast<Utf8>().toDartString();
+        if (errPtr != ffi.nullptr) _b.free(errPtr);
+        throw EngineError(msg);
+      }
+      return EngineLedgerRepository._(_b, handle);
+    } finally {
+      calloc.free(dbPtr);
+      calloc.free(sidPtr);
+      calloc.free(saPtr);
+      calloc.free(errOut);
+    }
+  }
+}
+
+/// Dart-side wrapper over a Rust `LedgerHandle`. Same record wire
+/// form as [EngineSheetsRepository] (tagged envelopes; use
+/// [recordToEngineJson] / [recordFromEngineJson]).
+class EngineLedgerRepository {
+  EngineLedgerRepository._(this._b, this._handle) {
+    _finalizer.attach(this, _LedgerToken(_b, _handle), detach: this);
+  }
+
+  final EngineBindings _b;
+  ffi.Pointer<LedgerHandle> _handle;
+  bool _closed = false;
+
+  static final Finalizer<_LedgerToken> _finalizer =
+      Finalizer<_LedgerToken>((t) {
+    t.bindings.ledgerFreeHandle(t.pointer);
+  });
+
+  /// Explicit lifecycle close. Idempotent.
+  void close() {
+    if (_closed) return;
+    _closed = true;
+    _finalizer.detach(this);
+    _b.ledgerFreeHandle(_handle);
+    _handle = ffi.nullptr;
+  }
+
+  /// Local `list` — instant, zero network. Optional [onDate] filters
+  /// by the view's `date_field`.
+  Future<List<Map<String, dynamic>>> list(
+    Map<String, dynamic> viewJson, {
+    DateTime? onDate,
+  }) async {
+    _ensureOpen();
+    final addr = _handle.address;
+    final view = jsonEncode(viewJson);
+    final dateStr = onDate == null ? null : _isoDateOf(onDate);
+    final decoded =
+        await Isolate.run(() => _ledgerRunList(addr, view, dateStr));
+    if (decoded is! List) {
+      throw EngineError('list expected array, got $decoded');
+    }
+    return decoded.cast<Map<String, dynamic>>();
+  }
+
+  /// Local `create`. Returns the stored record with any
+  /// auto-assigned `id`.
+  Future<Map<String, dynamic>> create(
+    Map<String, dynamic> viewJson,
+    Map<String, dynamic> recordJson,
+  ) async {
+    return _runTwo(_LedgerOpKind.create, viewJson, recordJson);
+  }
+
+  /// Local `update` — addresses by `id`.
+  Future<void> update(
+    Map<String, dynamic> viewJson,
+    Map<String, dynamic> recordJson,
+  ) async {
+    await _runTwo(_LedgerOpKind.update, viewJson, recordJson);
+  }
+
+  /// Local `delete` — tombstones synced rows, removes unsynced ones.
+  Future<void> delete(
+    Map<String, dynamic> viewJson,
+    Map<String, dynamic> recordJson,
+  ) async {
+    await _runTwo(_LedgerOpKind.delete, viewJson, recordJson);
+  }
+
+  /// Count of local changes not yet pushed to the Sheet.
+  Future<int> pending() async {
+    _ensureOpen();
+    final addr = _handle.address;
+    final decoded = await Isolate.run(() => _ledgerRunPending(addr));
+    if (decoded is! Map || decoded['pending'] is! int) {
+      throw EngineError('pending expected {pending: n}, got $decoded');
+    }
+    return decoded['pending'] as int;
+  }
+
+  /// Run a full sync for [views] (JSON-decoded ViewSchemas). Network
+  /// happens here and only here. Returns per-view result maps
+  /// (`{view, pulled, pushed, deleted_local, deleted_remote,
+  /// conflicts, error}`); a view's failure lands in its `error`
+  /// field rather than throwing.
+  Future<List<Map<String, dynamic>>> sync(
+    List<Map<String, dynamic>> views,
+  ) async {
+    _ensureOpen();
+    final addr = _handle.address;
+    final viewsJson = jsonEncode(views);
+    final decoded = await Isolate.run(() => _ledgerRunSync(addr, viewsJson));
+    if (decoded is! List) {
+      throw EngineError('sync expected array, got $decoded');
+    }
+    return decoded.cast<Map<String, dynamic>>();
+  }
+
+  // ---------------------------------------------------------- internals
+
+  void _ensureOpen() {
+    if (_closed) {
+      throw StateError('EngineLedgerRepository used after close()');
+    }
+  }
+
+  Future<Map<String, dynamic>> _runTwo(
+    _LedgerOpKind kind,
+    Map<String, dynamic> viewJson,
+    Map<String, dynamic> recordJson,
+  ) async {
+    _ensureOpen();
+    final addr = _handle.address;
+    final view = jsonEncode(viewJson);
+    final record = jsonEncode(recordJson);
+    final decoded =
+        await Isolate.run(() => _ledgerRunTwo(kind, addr, view, record));
+    if (decoded is! Map<String, dynamic>) {
+      throw EngineError('expected JSON object, got: $decoded');
+    }
+    return decoded;
+  }
+
+  String _isoDateOf(DateTime d) {
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final dd = d.day.toString().padLeft(2, '0');
+    return '$y-$m-$dd';
+  }
+}
+
+class _LedgerToken {
+  _LedgerToken(this.bindings, this.pointer);
+  final EngineBindings bindings;
+  final ffi.Pointer<LedgerHandle> pointer;
+}
+
+enum _LedgerOpKind { create, update, delete }
+
+Object? _ledgerRunList(int handleAddr, String viewJson, String? dateStr) {
+  final b = _bindingsForCurrentIsolate();
+  final handle = ffi.Pointer<LedgerHandle>.fromAddress(handleAddr);
+  final viewPtr = viewJson.toNativeUtf8().cast<ffi.Char>();
+  final datePtr = dateStr == null
+      ? ffi.nullptr.cast<ffi.Char>()
+      : dateStr.toNativeUtf8().cast<ffi.Char>();
+  try {
+    return _decodePtr(b, b.ledgerList(handle, viewPtr, datePtr));
+  } finally {
+    calloc.free(viewPtr);
+    if (datePtr != ffi.nullptr.cast<ffi.Char>()) calloc.free(datePtr);
+  }
+}
+
+Object? _ledgerRunTwo(
+  _LedgerOpKind kind,
+  int handleAddr,
+  String viewJson,
+  String recordJson,
+) {
+  final b = _bindingsForCurrentIsolate();
+  final handle = ffi.Pointer<LedgerHandle>.fromAddress(handleAddr);
+  final viewPtr = viewJson.toNativeUtf8().cast<ffi.Char>();
+  final recPtr = recordJson.toNativeUtf8().cast<ffi.Char>();
+  try {
+    final fn = switch (kind) {
+      _LedgerOpKind.create => b.ledgerCreate,
+      _LedgerOpKind.update => b.ledgerUpdate,
+      _LedgerOpKind.delete => b.ledgerDelete,
+    };
+    return _decodePtr(b, fn(handle, viewPtr, recPtr));
+  } finally {
+    calloc.free(viewPtr);
+    calloc.free(recPtr);
+  }
+}
+
+Object? _ledgerRunPending(int handleAddr) {
+  final b = _bindingsForCurrentIsolate();
+  final handle = ffi.Pointer<LedgerHandle>.fromAddress(handleAddr);
+  return _decodePtr(b, b.ledgerPending(handle));
+}
+
+Object? _ledgerRunSync(int handleAddr, String viewsJson) {
+  final b = _bindingsForCurrentIsolate();
+  final handle = ffi.Pointer<LedgerHandle>.fromAddress(handleAddr);
+  final viewsPtr = viewsJson.toNativeUtf8().cast<ffi.Char>();
+  try {
+    return _decodePtr(b, b.ledgerSync(handle, viewsPtr));
+  } finally {
+    calloc.free(viewsPtr);
+  }
+}
+
 /// Op kind tag for the worker isolate dispatcher. Plain `int` so it
 /// crosses the isolate boundary cheaply.
 enum _OpKind { ensure, create, update, delete }
