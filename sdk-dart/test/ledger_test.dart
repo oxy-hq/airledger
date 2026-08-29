@@ -59,6 +59,46 @@ void main() {
     dir.deleteSync(recursive: true);
   });
 
+  test('ingest merges a batch and meta round-trips', () async {
+    final engine = AirledgerEngine.load();
+    final dir = Directory.systemTemp.createTempSync('ingest');
+    final ledger = engine.openLedger(
+      dbPath: '${dir.path}/t.db',
+      defaultSpreadsheetId: 'unused',
+      serviceAccountJson: fakeSa,
+    );
+    final view = engine.parseViewPair(viewYaml: '''
+name: weight
+datasource: gsheets
+table: weight
+dimensions:
+  - { name: id, type: string, expr: id }
+  - { name: date, type: date, expr: date }
+  - { name: body_fat_withing, type: number, expr: body_fat_withing }
+''', inputYaml: '''
+target: weight.view.yml
+date_field: date
+''');
+    final res = await ledger.ingest(view, {
+      'source': 'withings',
+      'owned_fields': ['body_fat_withing'],
+      'records': [
+        {
+          'date': {'kind': 'date', 'value': '2026-08-28'},
+          'body_fat_withing': {'kind': 'float', 'value': 18.2},
+        }
+      ],
+    });
+    expect(res['created'], 1);
+    expect(await ledger.list(view), hasLength(1));
+
+    await ledger.metaSet('integration_cursor_withings', '123');
+    expect(await ledger.metaGet('integration_cursor_withings'), '123');
+    expect(await ledger.metaGet('never_written'), isNull);
+    ledger.close();
+    dir.deleteSync(recursive: true);
+  });
+
   test('openLedger surfaces engine errors', () {
     final engine = AirledgerEngine.load();
     expect(
