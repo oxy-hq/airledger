@@ -39,6 +39,23 @@ extern "C" {
 
     fn airledger_engine_ledger_pending(handle: *mut c_void) -> *mut c_char;
 
+    fn airledger_engine_ledger_ingest(
+        handle: *mut c_void,
+        view_json_ptr: *const c_char,
+        batch_json_ptr: *const c_char,
+    ) -> *mut c_char;
+
+    fn airledger_engine_ledger_meta_get(
+        handle: *mut c_void,
+        key_ptr: *const c_char,
+    ) -> *mut c_char;
+
+    fn airledger_engine_ledger_meta_set(
+        handle: *mut c_void,
+        key_ptr: *const c_char,
+        value_ptr: *const c_char,
+    ) -> *mut c_char;
+
     fn airledger_engine_free(ptr: *mut c_char);
 }
 
@@ -140,4 +157,52 @@ fn ledger_null_handle_returns_error_json() {
         let out = take_string(airledger_engine_ledger_pending(std::ptr::null_mut()));
         assert!(out.contains("error"));
     }
+}
+
+#[test]
+fn ledger_ingest_and_meta_round_trip() {
+    let dir = std::env::temp_dir().join("airledger-ledger-ffi");
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join(format!("ingest-{}.db", std::process::id()));
+    std::fs::remove_file(&db).ok();
+    unsafe {
+        let db_path = CString::new(db.to_str().unwrap()).unwrap();
+        let sid = CString::new("unused").unwrap();
+        let sa = CString::new(FAKE_SA).unwrap();
+        let mut err: *mut c_char = std::ptr::null_mut();
+        let h = airledger_engine_ledger_open(db_path.as_ptr(), sid.as_ptr(), sa.as_ptr(), &mut err);
+        assert!(!h.is_null());
+
+        let view = CString::new(
+            r#"{
+            "name":"weight","datasource":"gsheets","table":"weight","date_field":"date",
+            "dimensions":[
+                {"name":"id","type":"string","expr":"id"},
+                {"name":"date","type":"date","expr":"date"},
+                {"name":"body_fat_withing","type":"number","expr":"body_fat_withing"}
+            ]}"#,
+        )
+        .unwrap();
+        let batch = CString::new(
+            r#"{
+            "source":"withings","owned_fields":["body_fat_withing"],
+            "records":[{"date":{"kind":"date","value":"2026-08-28"},
+                        "body_fat_withing":{"kind":"float","value":18.2}}]}"#,
+        )
+        .unwrap();
+        let out = take_string(airledger_engine_ledger_ingest(h, view.as_ptr(), batch.as_ptr()));
+        let res: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(res["created"], 1, "ingest: {out}");
+
+        let key = CString::new("integration_cursor_withings").unwrap();
+        let val = CString::new("1756400000").unwrap();
+        let out = take_string(airledger_engine_ledger_meta_set(h, key.as_ptr(), val.as_ptr()));
+        assert!(out.contains("ok"));
+        let out = take_string(airledger_engine_ledger_meta_get(h, key.as_ptr()));
+        let res: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(res["value"], "1756400000");
+
+        airledger_engine_ledger_free_handle(h);
+    }
+    std::fs::remove_file(&db).ok();
 }
