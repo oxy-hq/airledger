@@ -6,10 +6,12 @@
 //! `dirty` (local change not yet pushed), `deleted` (tombstone).
 
 mod db;
+mod ingest;
 
 use thiserror::Error;
 
 pub use db::{LocalRow, Provenance, Store};
+pub use ingest::{ingest, IngestBatch, IngestResult};
 
 #[derive(Error, Debug)]
 pub enum StoreError {
