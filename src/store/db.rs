@@ -4,6 +4,18 @@ use crate::value::Record;
 
 use super::StoreError;
 
+/// What one source wrote onto one row — the unwind anchor for
+/// integration deletions. Local-only; never round-trips the Sheet.
+#[derive(Debug, Clone)]
+pub struct Provenance {
+    pub view_name: String,
+    pub id: String,
+    pub source: String,
+    pub fields: Vec<String>,
+    pub written: Record,
+    pub created: bool,
+}
+
 /// One local row with its sync metadata — the shape the sync engine
 /// consumes. `base` is `None` for never-synced (locally new) rows.
 #[derive(Debug, Clone)]
@@ -47,10 +59,25 @@ impl Store {
              CREATE TABLE IF NOT EXISTS meta (
                key   TEXT PRIMARY KEY,
                value TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS ingest_provenance (
+               view_name TEXT NOT NULL,
+               id        TEXT NOT NULL,
+               source    TEXT NOT NULL,
+               fields    TEXT NOT NULL,
+               written   TEXT NOT NULL,
+               created   INTEGER NOT NULL,
+               PRIMARY KEY (view_name, id, source)
              );",
         )?;
+        // v1 → v2 is just the ingest_provenance CREATE above, so the
+        // version can move forward unconditionally.
         conn.execute(
-            "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '1')",
+            "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '2')",
+            [],
+        )?;
+        conn.execute(
+            "UPDATE meta SET value = '2' WHERE key = 'schema_version'",
             [],
         )?;
         Ok(Self { conn })
@@ -248,6 +275,77 @@ impl Store {
         self.conn.execute(
             "DELETE FROM rows WHERE view_name = ?1 AND id = ?2",
             rusqlite::params![view_name, id],
+        )?;
+        Ok(())
+    }
+
+    // ------------------------------------------- ingest provenance
+
+    /// Upsert what one source wrote onto one row.
+    pub fn provenance_set(&self, p: &Provenance) -> Result<(), StoreError> {
+        self.conn.execute(
+            "INSERT INTO ingest_provenance(view_name, id, source, fields, written, created)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(view_name, id, source) DO UPDATE SET
+               fields = excluded.fields, written = excluded.written,
+               created = excluded.created",
+            rusqlite::params![
+                p.view_name,
+                p.id,
+                p.source,
+                serde_json::to_string(&p.fields)?,
+                serde_json::to_string(&p.written)?,
+                p.created,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn provenance_get(
+        &self,
+        view_name: &str,
+        id: &str,
+        source: &str,
+    ) -> Result<Option<Provenance>, StoreError> {
+        use rusqlite::OptionalExtension;
+        let row = self
+            .conn
+            .query_row(
+                "SELECT fields, written, created FROM ingest_provenance
+                 WHERE view_name = ?1 AND id = ?2 AND source = ?3",
+                rusqlite::params![view_name, id, source],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, bool>(2)?,
+                    ))
+                },
+            )
+            .optional()?;
+        Ok(match row {
+            None => None,
+            Some((fields, written, created)) => Some(Provenance {
+                view_name: view_name.into(),
+                id: id.into(),
+                source: source.into(),
+                fields: serde_json::from_str(&fields)?,
+                written: serde_json::from_str(&written)?,
+                created,
+            }),
+        })
+    }
+
+    pub fn provenance_remove(
+        &self,
+        view_name: &str,
+        id: &str,
+        source: &str,
+    ) -> Result<(), StoreError> {
+        self.conn.execute(
+            "DELETE FROM ingest_provenance
+             WHERE view_name = ?1 AND id = ?2 AND source = ?3",
+            rusqlite::params![view_name, id, source],
         )?;
         Ok(())
     }

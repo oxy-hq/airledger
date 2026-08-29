@@ -9,7 +9,7 @@ mod db;
 
 use thiserror::Error;
 
-pub use db::{LocalRow, Store};
+pub use db::{LocalRow, Provenance, Store};
 
 #[derive(Error, Debug)]
 pub enum StoreError {
