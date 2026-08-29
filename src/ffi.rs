@@ -428,7 +428,7 @@ pub use crate::value::CellValue as FfiCellValue;
 // store and the sheets repo live behind one opaque handle; local CRUD
 // never touches the network, sync does.
 
-use crate::store::{Store, StoreError};
+use crate::store::{ingest, IngestBatch, Store, StoreError};
 use crate::sync::sync_views;
 
 pub struct LedgerHandle {
@@ -636,6 +636,86 @@ pub unsafe extern "C" fn airledger_engine_ledger_sync(
         Err(_) => return error_json("handle mutex poisoned"),
     };
     result_json(&sync_views(&sync_store, &*sheets, &views))
+}
+
+/// Merge an externally-sourced batch into the local store. See
+/// `store::ingest` for the batch shape + merge rules. Returns the
+/// IngestResult JSON
+/// (`{created, updated, unchanged, skipped, deleted, cleared}`).
+///
+/// # Safety
+/// As [`airledger_engine_ledger_list`].
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_ledger_ingest(
+    handle: *mut LedgerHandle,
+    view_json_ptr: *const c_char,
+    batch_json_ptr: *const c_char,
+) -> *mut c_char {
+    let batch: IngestBatch = match unsafe { c_str_to_str(batch_json_ptr) }
+        .and_then(|s| serde_json::from_str(s).map_err(|e| format!("batch json: {e}")))
+    {
+        Ok(b) => b,
+        Err(e) => return error_json(&e),
+    };
+    ledger_call(handle, view_json_ptr, |store, view| {
+        ingest(store, view, &batch)
+    })
+}
+
+/// Read a ledger meta value: `{"value": "..."}` or `{"value": null}`.
+///
+/// # Safety
+/// `handle` valid; `key_ptr` nul-terminated UTF-8.
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_ledger_meta_get(
+    handle: *mut LedgerHandle,
+    key_ptr: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() {
+        return error_json("null handle");
+    }
+    let key = match unsafe { c_str_to_str(key_ptr) } {
+        Ok(k) => k,
+        Err(e) => return error_json(&e),
+    };
+    let handle = unsafe { &*handle };
+    let store = match handle.store.lock() {
+        Ok(g) => g,
+        Err(_) => return error_json("store mutex poisoned"),
+    };
+    match store.meta_get(key) {
+        Ok(v) => result_json(&serde_json::json!({ "value": v })),
+        Err(e) => error_json(&e.to_string()),
+    }
+}
+
+/// Write a ledger meta value: `{"ok":true}`.
+///
+/// # Safety
+/// As [`airledger_engine_ledger_meta_get`]; `value_ptr` also valid.
+#[no_mangle]
+pub unsafe extern "C" fn airledger_engine_ledger_meta_set(
+    handle: *mut LedgerHandle,
+    key_ptr: *const c_char,
+    value_ptr: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() {
+        return error_json("null handle");
+    }
+    let (key, value) =
+        match (unsafe { c_str_to_str(key_ptr) }, unsafe { c_str_to_str(value_ptr) }) {
+            (Ok(k), Ok(v)) => (k, v),
+            (Err(e), _) | (_, Err(e)) => return error_json(&e),
+        };
+    let handle = unsafe { &*handle };
+    let store = match handle.store.lock() {
+        Ok(g) => g,
+        Err(_) => return error_json("store mutex poisoned"),
+    };
+    match store.meta_set(key, value) {
+        Ok(()) => result_json(&serde_json::json!({ "ok": true })),
+        Err(e) => error_json(&e.to_string()),
+    }
 }
 
 // ----------------------------------------------------- ledger helpers

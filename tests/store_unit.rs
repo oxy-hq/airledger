@@ -119,14 +119,14 @@ fn open_creates_schema_and_is_idempotent() {
         let store = Store::open(path_str).expect("first open");
         assert_eq!(
             store.meta_get("schema_version").unwrap().as_deref(),
-            Some("1")
+            Some("2")
         );
     }
     // Reopen: no error, version unchanged.
     let store = Store::open(path_str).expect("reopen");
     assert_eq!(
         store.meta_get("schema_version").unwrap().as_deref(),
-        Some("1")
+        Some("2")
     );
     std::fs::remove_file(&path).ok();
 }
@@ -174,4 +174,39 @@ plannable:
     let listed = store.list(&view, Some(on)).unwrap();
     assert_eq!(listed.len(), 2);
     assert_eq!(listed[0].get("time"), Some(&CellValue::String("07:30".into())));
+}
+
+#[test]
+fn provenance_round_trip_and_remove() {
+    let store = temp_store("prov");
+    use airledger_engine::store::Provenance;
+    let written = rec(&[("body_fat_withing", CellValue::Float(18.2))]);
+    store
+        .provenance_set(&Provenance {
+            view_name: "weight".into(),
+            id: "row-1".into(),
+            source: "withings".into(),
+            fields: vec!["body_fat_withing".into()],
+            written: written.clone(),
+            created: false,
+        })
+        .unwrap();
+    let p = store
+        .provenance_get("weight", "row-1", "withings")
+        .unwrap()
+        .unwrap();
+    assert_eq!(p.fields, vec!["body_fat_withing".to_string()]);
+    assert_eq!(p.written, written);
+    assert!(!p.created);
+    store.provenance_remove("weight", "row-1", "withings").unwrap();
+    assert!(store
+        .provenance_get("weight", "row-1", "withings")
+        .unwrap()
+        .is_none());
+}
+
+#[test]
+fn open_migrates_v1_store_to_v2() {
+    let store = temp_store("migrate");
+    assert_eq!(store.meta_get("schema_version").unwrap().as_deref(), Some("2"));
 }

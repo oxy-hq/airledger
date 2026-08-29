@@ -161,6 +161,18 @@ class EngineBindings {
             .lookup<ffi.NativeFunction<_LedgerOpTwoNative>>(
                 'airledger_engine_ledger_sync')
             .asFunction(),
+        ledgerIngest = lib
+            .lookup<ffi.NativeFunction<_LedgerOpThreeNative>>(
+                'airledger_engine_ledger_ingest')
+            .asFunction(),
+        ledgerMetaGet = lib
+            .lookup<ffi.NativeFunction<_LedgerOpTwoNative>>(
+                'airledger_engine_ledger_meta_get')
+            .asFunction(),
+        ledgerMetaSet = lib
+            .lookup<ffi.NativeFunction<_LedgerOpThreeNative>>(
+                'airledger_engine_ledger_meta_set')
+            .asFunction(),
         ledgerFreeHandlePtr = lib
             .lookup<ffi.NativeFunction<_LedgerFreeHandleNative>>(
                 'airledger_engine_ledger_free_handle');
@@ -245,6 +257,21 @@ class EngineBindings {
     ffi.Pointer<LedgerHandle>,
     ffi.Pointer<ffi.Char>,
   ) ledgerSync;
+
+  final ffi.Pointer<ffi.Char> Function(
+    ffi.Pointer<LedgerHandle>,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Char>,
+  ) ledgerIngest;
+  final ffi.Pointer<ffi.Char> Function(
+    ffi.Pointer<LedgerHandle>,
+    ffi.Pointer<ffi.Char>,
+  ) ledgerMetaGet;
+  final ffi.Pointer<ffi.Char> Function(
+    ffi.Pointer<LedgerHandle>,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Char>,
+  ) ledgerMetaSet;
 
   /// Native pointer for `ledger_free_handle` — for the `Finalizer`.
   final ffi.Pointer<ffi.NativeFunction<_LedgerFreeHandleNative>>

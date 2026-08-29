@@ -396,6 +396,43 @@ class EngineLedgerRepository {
     return decoded.cast<Map<String, dynamic>>();
   }
 
+  /// Merge an externally-sourced batch (see the engine's
+  /// `IngestBatch`: source, owned_fields, fill_if_blank_fields,
+  /// records, deleted_dates). Returns
+  /// `{created, updated, unchanged, skipped, deleted, cleared}`.
+  Future<Map<String, dynamic>> ingest(
+    Map<String, dynamic> viewJson,
+    Map<String, dynamic> batchJson,
+  ) async {
+    _ensureOpen();
+    final addr = _handle.address;
+    final view = jsonEncode(viewJson);
+    final batch = jsonEncode(batchJson);
+    final decoded =
+        await Isolate.run(() => _ledgerRunIngest(addr, view, batch));
+    if (decoded is! Map<String, dynamic>) {
+      throw EngineError('ingest expected JSON object, got: $decoded');
+    }
+    return decoded;
+  }
+
+  /// Small per-ledger key/value store (integration cursors, status).
+  Future<String?> metaGet(String key) async {
+    _ensureOpen();
+    final addr = _handle.address;
+    final decoded = await Isolate.run(() => _ledgerRunMetaGet(addr, key));
+    if (decoded is! Map) {
+      throw EngineError('metaGet expected object, got: $decoded');
+    }
+    return decoded['value'] as String?;
+  }
+
+  Future<void> metaSet(String key, String value) async {
+    _ensureOpen();
+    final addr = _handle.address;
+    await Isolate.run(() => _ledgerRunMetaSet(addr, key, value));
+  }
+
   // ---------------------------------------------------------- internals
 
   void _ensureOpen() {
@@ -472,6 +509,43 @@ Object? _ledgerRunTwo(
   } finally {
     calloc.free(viewPtr);
     calloc.free(recPtr);
+  }
+}
+
+Object? _ledgerRunIngest(int handleAddr, String viewJson, String batchJson) {
+  final b = _bindingsForCurrentIsolate();
+  final handle = ffi.Pointer<LedgerHandle>.fromAddress(handleAddr);
+  final viewPtr = viewJson.toNativeUtf8().cast<ffi.Char>();
+  final batchPtr = batchJson.toNativeUtf8().cast<ffi.Char>();
+  try {
+    return _decodePtr(b, b.ledgerIngest(handle, viewPtr, batchPtr));
+  } finally {
+    calloc.free(viewPtr);
+    calloc.free(batchPtr);
+  }
+}
+
+Object? _ledgerRunMetaGet(int handleAddr, String key) {
+  final b = _bindingsForCurrentIsolate();
+  final handle = ffi.Pointer<LedgerHandle>.fromAddress(handleAddr);
+  final keyPtr = key.toNativeUtf8().cast<ffi.Char>();
+  try {
+    return _decodePtr(b, b.ledgerMetaGet(handle, keyPtr));
+  } finally {
+    calloc.free(keyPtr);
+  }
+}
+
+Object? _ledgerRunMetaSet(int handleAddr, String key, String value) {
+  final b = _bindingsForCurrentIsolate();
+  final handle = ffi.Pointer<LedgerHandle>.fromAddress(handleAddr);
+  final keyPtr = key.toNativeUtf8().cast<ffi.Char>();
+  final valPtr = value.toNativeUtf8().cast<ffi.Char>();
+  try {
+    return _decodePtr(b, b.ledgerMetaSet(handle, keyPtr, valPtr));
+  } finally {
+    calloc.free(keyPtr);
+    calloc.free(valPtr);
   }
 }
 

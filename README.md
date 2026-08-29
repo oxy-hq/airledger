@@ -33,6 +33,9 @@ build outputs.
 - ✅ Phase 8 — local-first store + sync engine (`store/`, `sync/`,
      ledger FFI + `EngineLedgerRepository`): SQLite is the app's
      source of truth, Sheets syncs bidirectionally (app wins).
+- ✅ Phase 9 — integrations ingest (`store/ingest.rs`): generic
+     merge-by-date primitive with provenance + deletion unwind;
+     first consumer is the app's Withings → weight pipeline.
 
 See [`docs/port-plan.md`](docs/port-plan.md) for the full plan,
 architectural decisions, and how to continue mid-stream.

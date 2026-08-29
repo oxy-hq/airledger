@@ -62,7 +62,8 @@ not necessary if we extract the engine cleanly.
 | 6d | Archive sheets consumer cutover — UI typed against `WarehouseConnector`, engine-routed | ✅ shipped — validated on Pixel: strength view's 10 rows render via engine `list()` |
 | 7 | Drop in the engine on a React Oxy bundle (WASM consumer) | ⏳ not started |
 | 8 | Local-first store + sync engine (SQLite source of truth, bidirectional Sheets sync, app-wins conflicts) | ✅ shipped — spec `docs/superpowers/specs/2026-08-27-local-first-sync-design.md` |
-| 8b | Archive app cutover to `EngineLedgerRepository` + `SyncScheduler` (wifi-gated auto-sync) | see follow-ups below |
+| 8b | Archive app cutover to `EngineLedgerRepository` + `SyncScheduler` (wifi-gated auto-sync) | ✅ shipped — verified on Pixel |
+| 9 | Integrations ingest primitive + Withings pipeline (app-side source, engine-side merge/provenance/unwind) | ✅ shipped — spec `docs/superpowers/specs/2026-08-28-integrations-withings-design.md` |
 
 ## What lives where
 
