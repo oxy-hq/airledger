@@ -111,3 +111,69 @@ fn record_without_date_is_skipped() {
     assert_eq!(res.skipped, 1);
     assert!(store.list(&view, None).unwrap().is_empty());
 }
+
+#[test]
+fn deleted_date_removes_source_created_untouched_row() {
+    let store = temp_store("del-created");
+    let view = weight_view();
+    ingest(&store, &view, &batch(DAY_BATCH)).unwrap();
+    let b = batch(r#"{"source":"withings","deleted_dates":["2026-08-28"]}"#);
+    let res = ingest(&store, &view, &b).unwrap();
+    assert_eq!(res.deleted, 1);
+    assert!(store.list(&view, None).unwrap().is_empty());
+}
+
+#[test]
+fn deleted_date_clears_only_source_fields_on_manual_row() {
+    let store = temp_store("del-manual");
+    let view = weight_view();
+    let mut manual = std::collections::BTreeMap::new();
+    manual.insert(
+        "date".to_string(),
+        CellValue::Date(chrono::NaiveDate::from_ymd_opt(2026, 8, 28).unwrap()),
+    );
+    manual.insert("weight_lbs".to_string(), CellValue::Float(180.5));
+    store.create(&view, manual).unwrap();
+    ingest(&store, &view, &batch(DAY_BATCH)).unwrap(); // fills body_fat + time
+
+    let b = batch(r#"{"source":"withings","deleted_dates":["2026-08-28"]}"#);
+    let res = ingest(&store, &view, &b).unwrap();
+    assert_eq!(res.cleared, 1);
+    let row = &store.list(&view, None).unwrap()[0];
+    assert_eq!(row.get("weight_lbs"), Some(&CellValue::Float(180.5)), "manual survives");
+    assert!(row.get("body_fat_withing").map_or(true, |v| v.is_empty()), "owned cleared");
+    assert!(row.get("time").map_or(true, |v| v.is_empty()), "filled field cleared");
+}
+
+#[test]
+fn deleted_date_leaves_row_edited_after_ingest_but_clears_fields() {
+    let store = temp_store("del-edited");
+    let view = weight_view();
+    ingest(&store, &view, &batch(DAY_BATCH)).unwrap();
+    // User edits the source-created row afterwards.
+    let mut row = store.list(&view, None).unwrap().remove(0);
+    row.insert("weight_lbs".into(), CellValue::Float(181.0));
+    store.update(&view, row).unwrap();
+
+    let b = batch(r#"{"source":"withings","deleted_dates":["2026-08-28"]}"#);
+    let res = ingest(&store, &view, &b).unwrap();
+    assert_eq!((res.deleted, res.cleared), (0, 1), "edited row must not be deleted");
+    let row = &store.list(&view, None).unwrap()[0];
+    assert_eq!(row.get("weight_lbs"), Some(&CellValue::Float(181.0)));
+}
+
+#[test]
+fn deleted_date_without_provenance_is_ignored() {
+    let store = temp_store("del-none");
+    let view = weight_view();
+    let mut manual = std::collections::BTreeMap::new();
+    manual.insert(
+        "date".to_string(),
+        CellValue::Date(chrono::NaiveDate::from_ymd_opt(2026, 8, 28).unwrap()),
+    );
+    store.create(&view, manual).unwrap();
+    let b = batch(r#"{"source":"withings","deleted_dates":["2026-08-28","2026-08-01"]}"#);
+    let res = ingest(&store, &view, &b).unwrap();
+    assert_eq!((res.deleted, res.cleared), (0, 0));
+    assert_eq!(store.list(&view, None).unwrap().len(), 1);
+}

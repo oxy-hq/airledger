@@ -137,7 +137,7 @@ pub fn ingest(
             }
         }
 
-        apply_deletions(s, view, batch, &mut by_date, &mut res)?;
+        apply_deletions(s, view, batch, &date_field, &mut by_date, &mut res)?;
         Ok(res)
     })
 }
@@ -146,6 +146,7 @@ fn apply_deletions(
     s: &Store,
     view: &ViewSchema,
     batch: &IngestBatch,
+    date_field: &str,
     by_date: &mut BTreeMap<String, Record>,
     res: &mut IngestResult,
 ) -> Result<(), StoreError> {
@@ -171,9 +172,17 @@ fn apply_deletions(
             by_date.remove(day);
             res.deleted += 1;
         } else {
+            // Clear only fields still holding the source's value —
+            // user edits to a source-written field survive, and the
+            // date field is exempt (it's the row's identity).
             let mut cleared = row.clone();
             for f in &prov.fields {
-                cleared.insert(f.clone(), CellValue::Null);
+                if f == date_field {
+                    continue;
+                }
+                if row.get(f) == prov.written.get(f) {
+                    cleared.insert(f.clone(), CellValue::Null);
+                }
             }
             if cleared != row {
                 s.update(view, cleared.clone())?;
