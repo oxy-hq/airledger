@@ -20,6 +20,17 @@ returning cold.
 
 ## Ground rules
 
+- **After any engine change the app consumes, rebuild the Android dylib:**
+  `cd sdk-dart && ./scripts/build-android.sh`, then rebuild/install the
+  APK. The app bundles `sdk-dart/build/jniLibs/*.so` at build time and
+  parses schemas through it (`useEngine = true`) — a stale dylib
+  silently drops new schema keys with no error. Sanity check:
+  `strings sdk-dart/build/jniLibs/arm64-v8a/libairledger_engine.so | grep <new_key>`.
+- **Push `airledger-fitness` after schema edits.** The app's SchemaSync
+  pulls `views/` from GitHub and prefers the synced copy over bundled
+  assets — an unpushed schema change gets reverted on device at the
+  next sync poll.
+
 - **Schema changes go in two places:** Rust (`src/schema/`, `src/parse/`)
   and the app's Dart mirrors (`lib/models/view_schema.dart`,
   `lib/services/input_parser.dart`, `lib/services/engine_schema_adapter.dart`).
