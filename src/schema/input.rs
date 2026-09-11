@@ -81,6 +81,12 @@ pub struct InputSpec {
     /// drops whichever doesn't apply at save.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop_targets: Option<Vec<TimerStopTarget>>,
+
+    /// For `widget: timer` only. Dim that receives the highest live BPM
+    /// observed while the timer ran, written as a number on Stop. Set
+    /// by the app's BLE heart-rate feed (Whoop broadcast).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hr_max_target: Option<String>,
 }
 
 fn ret_true() -> bool {
@@ -109,6 +115,13 @@ pub struct TimerLadder {
     pub label: String,
     /// Dim name on the same view that elapsed time gets stamped into.
     pub target: String,
+    /// Auto-stamp threshold as a percent of the user's max heart rate
+    /// (ledger meta `user_max_hr`). When set and a live BLE HR source
+    /// is connected, the app fires this ladder automatically the first
+    /// time live BPM reaches the threshold while the timer runs.
+    /// Manual taps keep working either way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hr_pct: Option<f64>,
 }
 
 /// One target the Stop button writes into.

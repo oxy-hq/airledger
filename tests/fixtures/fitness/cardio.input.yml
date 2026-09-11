@@ -66,8 +66,9 @@ fields:
     # Tap the Stop (⏸) button → writes elapsed into stop_target and
     # freezes the timer. Acts as the natural "Done" for the interval.
     ladders:
-      - { label: "Zone 4 reached", target: zone4_reached }
-      - { label: "Zone 5 reached", target: zone5_reached }
+      - { label: "Zone 4 reached", target: zone4_reached, hr_pct: 80 }
+      - { label: "Zone 5 reached", target: zone5_reached, hr_pct: 90 }
     stop_target: total_time
+    hr_max_target: max_hr
   notes:
     widget: longtext

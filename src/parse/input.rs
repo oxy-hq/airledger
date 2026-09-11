@@ -37,6 +37,7 @@ const FORM_SPEC_KEYS: &[&str] = &[
     "ladders",
     "stop_target",
     "stop_targets",
+    "hr_max_target",
 ];
 
 pub fn parse_input_overlay(yaml: &str) -> Result<InputOverlay, ParseError> {
@@ -238,6 +239,10 @@ fn parse_input_spec(node: &Mapping) -> Result<InputSpec, ParseError> {
             .unwrap_or(false),
         ladders,
         stop_targets,
+        hr_max_target: node
+            .get(Value::String("hr_max_target".into()))
+            .and_then(Value::as_str)
+            .map(String::from),
     })
 }
 
@@ -270,7 +275,10 @@ fn parse_ladders(seq: &[Value]) -> Result<Vec<TimerLadder>, ParseError> {
             })?;
             let label = require_string(m, "label")?;
             let target = require_string(m, "target")?;
-            Ok(TimerLadder { label, target })
+            let hr_pct = m
+                .get(Value::String("hr_pct".into()))
+                .and_then(Value::as_f64);
+            Ok(TimerLadder { label, target, hr_pct })
         })
         .collect()
 }
