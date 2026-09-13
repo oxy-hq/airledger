@@ -12,7 +12,7 @@ Both register on the app's integrations screen via the same interface.
 
 ## The `Integration` interface (app)
 
-`~/repos/airledger-archive/lib/services/integrations/integration.dart`:
+`~/repos/ledger/lib/services/integrations/integration.dart`:
 `id`, `displayName`, `targetDescription`, `isConfigured`, `isConnected`,
 `statusLine`, `connect(context)`, `disconnect()`, `pull({force,
 fullReconcile})`. Contract notes:
@@ -27,7 +27,7 @@ fullReconcile})`. Contract notes:
 
 ## Background pull pattern (reference: Withings)
 
-`~/repos/airledger-archive/lib/services/integrations/withings.dart`:
+`~/repos/ledger/lib/services/integrations/withings.dart`:
 
 1. `connect()` runs OAuth2 in a WebView; tokens go to
    `flutter_secure_storage` (never ledger meta).

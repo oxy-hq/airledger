@@ -15,8 +15,8 @@ returning cold.
 | [docs/port-plan.md](docs/port-plan.md) | Full port plan + architectural decisions, phase by phase |
 | [docs/superpowers/specs/](docs/superpowers/specs/) | Design specs (local-first sync, Withings, Whoop live HR) |
 | [docs/superpowers/plans/](docs/superpowers/plans/) | Implementation plans |
-| `../airledger-archive/CLAUDE.md` | The Flutter app's operating guide: build/deploy loop, device serial, asset pipeline, Sheets pitfalls |
-| `../airledger-archive/docs/view-input-pairing.md` | `.view.yml` ↔ `.input.yml` schema pairing rules |
+| `../ledger/CLAUDE.md` | The Flutter app's operating guide: build/deploy loop, device serial, asset pipeline, Sheets pitfalls |
+| `../ledger/docs/view-input-pairing.md` | `.view.yml` ↔ `.input.yml` schema pairing rules |
 
 ## Ground rules
 
@@ -39,8 +39,8 @@ returning cold.
 - **The local ledger is the source of truth** (post phase 8); Sheets is
   the synced mirror, app-wins. Don't reintroduce "Sheets is truth"
   assumptions from older docs.
-- The Flutter app repo is `~/repos/airledger-archive` — live and actively
-  developed despite the name.
+- The Flutter app repo is `~/repos/ledger` (GitHub `rsyi/ledger`,
+  formerly `oxy-hq/airledger-archive`); the product name is "Ledger".
 - Commits in this repo: conventional style (`feat(ingest): …`,
   `docs: …`), commit when a phase/step completes.
 

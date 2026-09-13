@@ -7,18 +7,22 @@ pieces fit; each section links to a deeper doc or the code.
 
 ```
 ~/repos/airledger/           Rust engine (this repo) — schema, eval, store, sync, FFI
-~/repos/airledger-archive/   Flutter app (Android) — UI, integrations, connectors
+~/repos/ledger/              Flutter app "Ledger" (Android) — UI, integrations, connectors (GitHub: rsyi/ledger)
+~/repos/ledger-mcp/          Remote MCP server for the Claude app (Cloudflare Worker, GitHub: rsyi/ledger-mcp)
 ~/repos/airledger-fitness/   LIVE schemas: views/*.view.yml + *.input.yml, templates, ledger.yaml (branding)
-~/.config/airledger/         service-account.json + config.yaml (secrets, not in git)
+~/.config/airledger/         service-account.json + config.yaml + mcp_token (secrets, not in git)
 ```
 
-Naming gotchas (both matter):
+Naming gotchas:
 
-- The Flutter app lives in `airledger-archive` (historical — it predates
-  the engine and was "archived" in name only; it is the live, actively
-  developed app). The engine repo is `airledger`. The app's own operating
-  guide is `~/repos/airledger-archive/CLAUDE.md` — build/deploy loop,
-  device serial, Sheets pitfalls.
+- The product is called **Ledger** (2026-09-13 rename): app repo
+  `rsyi/ledger`, launcher label "Ledger", MCP worker `ledger-mcp`.
+  The engine repo keeps the historical name `airledger` (as does the
+  schemas repo `airledger-fitness`, and the Android package id stays
+  `com.robertyi.fitness` to preserve on-device data). The app repo was
+  previously `oxy-hq/airledger-archive` — old links redirect. The
+  app's own operating guide is `~/repos/ledger/CLAUDE.md` —
+  build/deploy loop, device serial, Sheets pitfalls.
 - The live schema repo is `~/repos/airledger-fitness` (github
   `rsyi/airledger-fitness`). `~/repos/ledger-schemas` is a stale
   predecessor — don't edit it. The app's `tool/sync_assets.sh` has a
@@ -72,7 +76,7 @@ Every tracker is a `.view.yml` (semantic: dims, entities, measures —
 portable, shared with oxy/airlayer) plus a `.input.yml` (UI: widgets,
 defaults, show_when, timers, plannable — airledger-only). Live copies:
 `~/repos/airledger-fitness/views/`. Reference:
-`~/repos/airledger-archive/docs/view-input-pairing.md`. Rust structs:
+`~/repos/ledger/docs/view-input-pairing.md`. Rust structs:
 `src/schema/view.rs` / `src/schema/input.rs`. The app has mirror Dart
 models (`lib/models/view_schema.dart`, `lib/services/input_parser.dart`,
 `lib/services/engine_schema_adapter.dart`) — **schema additions must be
