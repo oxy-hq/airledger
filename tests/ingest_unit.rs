@@ -162,6 +162,102 @@ fn deleted_date_leaves_row_edited_after_ingest_but_clears_fields() {
     assert_eq!(row.get("weight_lbs"), Some(&CellValue::Float(181.0)));
 }
 
+// Ghost weigh-in scenario: the source created the day's row with a bad
+// weight (fill-if-blank field), then later reports the corrected value.
+const GHOST_BATCH: &str = r#"{
+  "source": "withings",
+  "owned_fields": ["body_fat_withing"],
+  "fill_if_blank_fields": ["weight_lbs", "time"],
+  "records": [{
+    "date": {"kind":"date","value":"2026-09-01"},
+    "time": {"kind":"string","value":"06:02"},
+    "weight_lbs": {"kind":"float","value":20.9}
+  }]
+}"#;
+
+#[test]
+fn fill_if_blank_revises_sources_own_unedited_value() {
+    let store = temp_store("revise");
+    let view = weight_view();
+    ingest(&store, &view, &batch(GHOST_BATCH)).unwrap();
+    let corrected = GHOST_BATCH.replace("20.9", "163.4");
+    let res = ingest(&store, &view, &batch(&corrected)).unwrap();
+    assert_eq!((res.updated, res.unchanged), (1, 0), "revision must land as an update");
+    let row = &store.list(&view, None).unwrap()[0];
+    assert_eq!(row.get("weight_lbs"), Some(&CellValue::Float(163.4)));
+}
+
+#[test]
+fn fill_if_blank_never_clobbers_user_edit() {
+    let store = temp_store("useredit");
+    let view = weight_view();
+    ingest(&store, &view, &batch(GHOST_BATCH)).unwrap();
+    // User corrects the weight by hand.
+    let mut row = store.list(&view, None).unwrap().remove(0);
+    row.insert("weight_lbs".into(), CellValue::Float(165.0));
+    store.update(&view, row).unwrap();
+
+    let corrected = GHOST_BATCH.replace("20.9", "163.4");
+    ingest(&store, &view, &batch(&corrected)).unwrap();
+    let row = &store.list(&view, None).unwrap()[0];
+    assert_eq!(row.get("weight_lbs"), Some(&CellValue::Float(165.0)), "user edit wins");
+}
+
+#[test]
+fn fill_if_blank_still_fills_blank() {
+    let store = temp_store("fillblank");
+    let view = weight_view();
+    // Row created by another path, weight left blank.
+    let mut manual = std::collections::BTreeMap::new();
+    manual.insert(
+        "date".to_string(),
+        CellValue::Date(chrono::NaiveDate::from_ymd_opt(2026, 9, 1).unwrap()),
+    );
+    store.create(&view, manual).unwrap();
+
+    let res = ingest(&store, &view, &batch(GHOST_BATCH)).unwrap();
+    assert_eq!(res.updated, 1);
+    let row = &store.list(&view, None).unwrap()[0];
+    assert_eq!(row.get("weight_lbs"), Some(&CellValue::Float(20.9)), "blank filled");
+}
+
+#[test]
+fn provenance_merges_on_update() {
+    let store = temp_store("prov-merge");
+    let view = weight_view();
+    // Source creates the row with date + weight only.
+    let create = r#"{
+      "source": "withings",
+      "owned_fields": ["body_fat_withing"],
+      "fill_if_blank_fields": ["weight_lbs", "time"],
+      "records": [{
+        "date": {"kind":"date","value":"2026-09-01"},
+        "weight_lbs": {"kind":"float","value":163.4}
+      }]
+    }"#;
+    ingest(&store, &view, &batch(create)).unwrap();
+    // Later pull writes only a second owned field.
+    let update = r#"{
+      "source": "withings",
+      "owned_fields": ["body_fat_withing"],
+      "fill_if_blank_fields": ["weight_lbs", "time"],
+      "records": [{
+        "date": {"kind":"date","value":"2026-09-01"},
+        "body_fat_withing": {"kind":"float","value":18.2}
+      }]
+    }"#;
+    let res = ingest(&store, &view, &batch(update)).unwrap();
+    assert_eq!(res.updated, 1);
+
+    // The source deletes the day: the whole row must unwind, which
+    // requires prov.created and the earlier-written fields to survive
+    // the second provenance write.
+    let b = batch(r#"{"source":"withings","deleted_dates":["2026-09-01"]}"#);
+    let res = ingest(&store, &view, &b).unwrap();
+    assert_eq!((res.deleted, res.cleared), (1, 0), "untouched source row deletes whole");
+    assert!(store.list(&view, None).unwrap().is_empty());
+}
+
 #[test]
 fn deleted_date_without_provenance_is_ignored() {
     let store = temp_store("del-none");

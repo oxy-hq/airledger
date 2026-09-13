@@ -1,6 +1,7 @@
 //! `ledger_ingest` — merge externally-sourced records into the local
 //! store. Owns the correctness rules every integration shares:
-//! match-by-date, owned vs fill-if-blank fields, no-op idempotency,
+//! match-by-date, owned vs fill-if-blank fields (fill when blank, or
+//! revise the source's own unedited value), no-op idempotency,
 //! provenance bookkeeping, and deletion unwind. One transaction per
 //! batch; ingested changes land dirty so the ordinary sync pushes
 //! them to the Sheet.
@@ -89,6 +90,12 @@ pub fn ingest(
                     res.created += 1;
                 }
                 Some(existing) => {
+                    let existing_id = existing
+                        .get("id")
+                        .map(|v| v.to_display_string())
+                        .unwrap_or_default();
+                    let prov =
+                        s.provenance_get(&view.name, &existing_id, &batch.source)?;
                     let mut updated = existing.clone();
                     let mut wrote: Vec<String> = Vec::new();
                     for f in &batch.owned_fields {
@@ -102,8 +109,17 @@ pub fn ingest(
                     for f in &batch.fill_if_blank_fields {
                         if let Some(v) = rec.get(f) {
                             let blank = updated.get(f).map_or(true, |cur| cur.is_empty());
-                            if blank {
-                                updated.insert(f.clone(), v.clone());
+                            // The cell still holds exactly what this
+                            // source last wrote — revising it corrects
+                            // the source's own value, not a user edit.
+                            let sources_own = prov.as_ref().is_some_and(|p| {
+                                p.fields.iter().any(|pf| pf == f)
+                                    && p.written.get(f) == updated.get(f)
+                            });
+                            if blank || sources_own {
+                                if updated.get(f) != Some(v) {
+                                    updated.insert(f.clone(), v.clone());
+                                }
                                 wrote.push(f.clone());
                             }
                         }
@@ -113,23 +129,29 @@ pub fn ingest(
                         continue;
                     }
                     s.update(view, updated.clone())?;
-                    let id = updated
-                        .get("id")
-                        .map(|v| v.to_display_string())
-                        .unwrap_or_default();
-                    let mut written = Record::new();
+                    // Merge into any existing provenance: fields the
+                    // source wrote earlier stay owned, and `created`
+                    // survives so deletion unwind still removes whole
+                    // source-created rows.
+                    let mut fields =
+                        prov.as_ref().map(|p| p.fields.clone()).unwrap_or_default();
+                    let mut written =
+                        prov.as_ref().map(|p| p.written.clone()).unwrap_or_else(Record::new);
                     for f in &wrote {
+                        if !fields.contains(f) {
+                            fields.push(f.clone());
+                        }
                         if let Some(v) = updated.get(f) {
                             written.insert(f.clone(), v.clone());
                         }
                     }
                     s.provenance_set(&Provenance {
                         view_name: view.name.clone(),
-                        id,
+                        id: existing_id,
                         source: batch.source.clone(),
-                        fields: wrote,
+                        fields,
                         written,
-                        created: false,
+                        created: prov.as_ref().is_some_and(|p| p.created),
                     })?;
                     by_date.insert(day, updated);
                     res.updated += 1;
