@@ -1,10 +1,12 @@
 //! `ledger_ingest` — merge externally-sourced records into the local
 //! store. Owns the correctness rules every integration shares:
-//! match-by-date, owned vs fill-if-blank fields (fill when blank, or
-//! revise the source's own unedited value), no-op idempotency,
-//! provenance bookkeeping, and deletion unwind. One transaction per
-//! batch; ingested changes land dirty so the ordinary sync pushes
-//! them to the Sheet.
+//! rows match by `date_field` (day-grained sources) or by a
+//! configurable `match_field` (row-grained sources, e.g. one row per
+//! ascent), owned vs fill-if-blank fields (fill when blank, or revise
+//! the source's own unedited value), no-op idempotency, provenance
+//! bookkeeping, and deletion unwind. One transaction per batch;
+//! ingested changes land dirty so the ordinary sync pushes them to
+//! the Sheet.
 
 use std::collections::BTreeMap;
 
@@ -33,8 +35,7 @@ pub struct IngestBatch {
     #[serde(default)]
     pub match_field: Option<String>,
     /// Unwind list for `match_field` mode (values of that field). Used
-    /// instead of `deleted_dates` when `match_field` is set. (Wired up
-    /// in the next task; declared here so the batch schema is complete.)
+    /// instead of `deleted_dates` when `match_field` is set.
     #[serde(default)]
     pub deleted_ids: Vec<String>,
 }
@@ -59,6 +60,11 @@ pub fn ingest(
         .date_field
         .clone()
         .ok_or_else(|| StoreError::NotFound("date_field".into(), view.name.clone()))?;
+    if let Some(mf) = &batch.match_field {
+        if !view.dimensions.iter().any(|d| &d.name == mf) {
+            return Err(StoreError::NotFound(format!("match_field {mf}"), view.name.clone()));
+        }
+    }
     // In match_field mode, rows are keyed by the given dimension's value
     // rather than by date (row-grained sources: many rows per day).
     // In date mode, key_field == date_field, preserving all prior behavior.
@@ -184,32 +190,40 @@ pub fn ingest(
             }
         }
 
-        apply_deletions(s, view, batch, &date_field, &mut by_key, &mut res)?;
+        // In match_field mode the unwind list is deleted_ids; the index
+        // is keyed by that field, so deleted_dates would be meaningless
+        // (and vice versa).
+        let unwind: &[String] = if batch.match_field.is_some() {
+            &batch.deleted_ids
+        } else {
+            &batch.deleted_dates
+        };
+        apply_deletions(s, view, &batch.source, &date_field, &key_field, unwind, &mut by_key, &mut res)?;
         Ok(res)
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_deletions(
     s: &Store,
     view: &ViewSchema,
-    batch: &IngestBatch,
+    source: &str,
     date_field: &str,
+    key_field: &str,
+    unwind: &[String],
     by_key: &mut BTreeMap<String, Record>,
     res: &mut IngestResult,
 ) -> Result<(), StoreError> {
-    // In match_field mode the index keys are dimension values (e.g. kaya_id),
-    // not dates. deleted_ids unwind for match_field mode lands in the next
-    // task; for now only deleted_dates is processed here (date mode only).
-    for day in &batch.deleted_dates {
-        let Some(row) = by_key.get(day).cloned() else {
+    for key in unwind {
+        let Some(row) = by_key.get(key).cloned() else {
             continue;
         };
         let id = row.get("id").map(|v| v.to_display_string()).unwrap_or_default();
         if id.is_empty() {
             continue;
         }
-        let Some(prov) = s.provenance_get(&view.name, &id, &batch.source)? else {
-            continue; // the source never touched this day
+        let Some(prov) = s.provenance_get(&view.name, &id, source)? else {
+            continue; // the source never touched this row
         };
         // "Untouched since": every field the source wrote still holds
         // the value the source wrote.
@@ -219,16 +233,16 @@ fn apply_deletions(
             .all(|f| row.get(f) == prov.written.get(f));
         if prov.created && untouched {
             s.delete(view, &row)?; // tombstone → sync removes the sheet row
-            by_key.remove(day);
+            by_key.remove(key);
             res.deleted += 1;
         } else {
             // Clear only fields still holding the source's value —
-            // user edits to a source-written field survive, and the
-            // date field is exempt (it's the row's identity).
+            // user edits to a source-written field survive, and both
+            // identity fields are exempt (date_field and key_field).
             let mut cleared = row.clone();
             for f in &prov.fields {
-                if f == date_field {
-                    continue;
+                if f == date_field || f == key_field {
+                    continue; // row identity fields survive the clear
                 }
                 if row.get(f) == prov.written.get(f) {
                     cleared.insert(f.clone(), CellValue::Null);
@@ -236,11 +250,11 @@ fn apply_deletions(
             }
             if cleared != row {
                 s.update(view, cleared.clone())?;
-                by_key.insert(day.clone(), cleared);
+                by_key.insert(key.clone(), cleared);
                 res.cleared += 1;
             }
         }
-        s.provenance_remove(&view.name, &id, &batch.source)?;
+        s.provenance_remove(&view.name, &id, source)?;
     }
     Ok(())
 }

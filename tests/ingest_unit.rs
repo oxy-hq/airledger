@@ -330,6 +330,16 @@ fn match_field_upserts_by_id_even_when_date_changes() {
     assert_eq!((res.created, res.updated, res.unchanged), (0, 1, 1));
     let rows = store.list(&view, None).unwrap();
     assert_eq!(rows.len(), 2, "revision matched by id, no duplicate row");
+    let a2 = rows
+        .iter()
+        .find(|r| r.get("kaya_id") == Some(&CellValue::String("a2".into())))
+        .expect("a2 row exists");
+    assert_eq!(a2.get("grade"), Some(&CellValue::String("V4".into())), "grade updated to V4");
+    assert_eq!(
+        a2.get("date"),
+        Some(&CellValue::Date(chrono::NaiveDate::from_ymd_opt(2026, 9, 15).unwrap())),
+        "date moved to 2026-09-15"
+    );
 }
 
 #[test]
@@ -363,4 +373,72 @@ fn match_field_record_without_key_is_skipped() {
     let res = ingest(&store, &view, &b).unwrap();
     assert_eq!(res.skipped, 1);
     assert!(store.list(&view, None).unwrap().is_empty());
+}
+
+#[test]
+fn deleted_id_removes_source_created_untouched_row() {
+    let store = temp_store("mf-del");
+    let view = climbing_view();
+    ingest(&store, &view, &batch(ASCENTS_BATCH)).unwrap();
+    let b = batch(r#"{"source":"kaya","match_field":"kaya_id","deleted_ids":["a2"]}"#);
+    let res = ingest(&store, &view, &b).unwrap();
+    assert_eq!(res.deleted, 1);
+    let rows = store.list(&view, None).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].get("kaya_id"), Some(&CellValue::String("a1".into())));
+}
+
+#[test]
+fn deleted_id_with_user_edit_clears_source_fields_keeps_edit() {
+    let store = temp_store("mf-del-edit");
+    let view = climbing_view();
+    ingest(&store, &view, &batch(ASCENTS_BATCH)).unwrap();
+    // User renames a2's climb.
+    let mut row = store
+        .list(&view, None)
+        .unwrap()
+        .into_iter()
+        .find(|r| r.get("kaya_id") == Some(&CellValue::String("a2".into())))
+        .unwrap();
+    row.insert("climb_name".to_string(), CellValue::String("My Name".into()));
+    store.update(&view, row).unwrap();
+
+    let b = batch(r#"{"source":"kaya","match_field":"kaya_id","deleted_ids":["a2"]}"#);
+    let res = ingest(&store, &view, &b).unwrap();
+    assert_eq!((res.deleted, res.cleared), (0, 1));
+    let row = store
+        .list(&view, None)
+        .unwrap()
+        .into_iter()
+        .find(|r| r.get("climb_name") == Some(&CellValue::String("My Name".into())))
+        .expect("edited row survives");
+    assert_eq!(row.get("grade"), Some(&CellValue::Null), "source field cleared");
+    assert_eq!(
+        row.get("kaya_id"),
+        Some(&CellValue::String("a2".into())),
+        "identity fields exempt from clearing"
+    );
+}
+
+#[test]
+fn deleted_dates_are_ignored_in_match_field_mode() {
+    let store = temp_store("mf-del-dates");
+    let view = climbing_view();
+    ingest(&store, &view, &batch(ASCENTS_BATCH)).unwrap();
+    let b = batch(
+        r#"{"source":"kaya","match_field":"kaya_id","deleted_dates":["2026-09-14"]}"#,
+    );
+    let res = ingest(&store, &view, &b).unwrap();
+    assert_eq!((res.deleted, res.cleared), (0, 0));
+    assert_eq!(store.list(&view, None).unwrap().len(), 2);
+}
+
+#[test]
+fn unknown_match_field_errors_loudly() {
+    let store = temp_store("mf-typo");
+    let view = climbing_view();
+    let b = batch(
+        r#"{"source":"kaya","match_field":"kayaid","records":[{"kayaid":{"kind":"string","value":"a1"},"date":{"kind":"date","value":"2026-09-14"}}]}"#,
+    );
+    assert!(ingest(&store, &view, &b).is_err(), "typo'd match_field must not silently no-op");
 }
