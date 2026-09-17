@@ -43,6 +43,39 @@ fullReconcile})`. Contract notes:
 5. Write cursor + human status back to meta; sync scheduler pushes the
    ingested rows to Sheets on its normal cycle.
 
+## Row-grained pull pattern (reference: Kaya)
+
+`~/repos/ledger/lib/services/integrations/kaya.dart` (+ `kaya_api.dart`).
+Same shape as Withings, but the unit is one row per *ascent*, not per
+day, so ingest runs in **match_field mode**: the batch sets
+`match_field: kaya_id` and rows upsert by that dimension's value
+(`src/store/ingest.rs`); many rows per day are fine. Deletions arrive as
+`deleted_ids` (values of the match field) instead of `deleted_dates`,
+with the same provenance rules; both identity fields (`date_field` +
+`match_field`) are exempt from the clear branch. Rows without a match
+value — hand-entered ones — are invisible to the batch. An unknown
+`match_field` errors loudly.
+
+Kaya-specific choices worth copying:
+
+- **No cursor.** The API's sort order is unverified, so every pull walks
+  the full paginated list and reconciles all history by diffing raw ids
+  against the `integration_kaya_ids` baseline. Correctness never depends
+  on order; upserts are idempotent.
+- **Deletion safety, three layers**: GraphQL shape drift (missing/null
+  data field) throws instead of reading as an empty list; the diff keys
+  on ids from the RAW wire response, never on transform output; an empty
+  fetch against a non-empty baseline refuses to diff unless the user
+  explicitly runs Full reconcile.
+- **Exclusive-pair fields ship explicit nulls** (`{"kind":"null"}` for
+  gym/location and lead): the engine never clears an owned field that is
+  absent from the record, so cross-boundary revisions must send the null.
+  Fields that can go absent through wire drift stay omit-don't-clear.
+- Auth is plain email/password → bearer + refresh token (no OAuth); the
+  API is unofficial and reverse-engineered, so requests spoof the web
+  app's Origin/Referer and the client treats any shape surprise as an
+  error, not data.
+
 ## Live/interactive pattern (reference: Whoop HR)
 
 Spec: `docs/superpowers/specs/2026-09-11-whoop-live-hr-design.md`.
