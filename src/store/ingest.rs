@@ -26,6 +26,17 @@ pub struct IngestBatch {
     pub records: Vec<Record>,
     #[serde(default)]
     pub deleted_dates: Vec<String>,
+    /// When set, rows match records by this dimension's value instead of
+    /// by `date_field` — row-grained sources (one row per ascent) rather
+    /// than day-grained ones. Rows with an empty value for the field are
+    /// invisible to the batch (hand-entered rows are never touched).
+    #[serde(default)]
+    pub match_field: Option<String>,
+    /// Unwind list for `match_field` mode (values of that field). Used
+    /// instead of `deleted_dates` when `match_field` is set. (Wired up
+    /// in the next task; declared here so the batch schema is complete.)
+    #[serde(default)]
+    pub deleted_ids: Vec<String>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -48,30 +59,44 @@ pub fn ingest(
         .date_field
         .clone()
         .ok_or_else(|| StoreError::NotFound("date_field".into(), view.name.clone()))?;
+    // In match_field mode, rows are keyed by the given dimension's value
+    // rather than by date (row-grained sources: many rows per day).
+    // In date mode, key_field == date_field, preserving all prior behavior.
+    let key_field = batch.match_field.clone().unwrap_or_else(|| date_field.clone());
     store.tx(|s| {
         let mut res = IngestResult::default();
-        // Index live rows by their date display string. First row of
-        // the day wins the match (one-row-per-day views).
+        // Index live rows by their key display string. In date mode this
+        // is the date; in match_field mode it is the match dimension value.
+        // First row wins for any duplicate key (one-row-per-key invariant).
+        // Empty-key rows are invisible to the batch — hand-entered rows
+        // without a kaya_id are never matched or overwritten.
+        //
+        // Note: empty-date rows used to be indexed under ""; records with
+        // an empty date were skipped and deleted_dates never contains "",
+        // so skipping empty keys is observably identical in date mode.
         let rows = s.list(view, None)?;
-        let mut by_date: BTreeMap<String, Record> = BTreeMap::new();
+        let mut by_key: BTreeMap<String, Record> = BTreeMap::new();
         for r in rows {
-            let d = r
-                .get(&date_field)
+            let k = r
+                .get(&key_field)
                 .map(|v| v.to_display_string())
                 .unwrap_or_default();
-            by_date.entry(d).or_insert(r);
+            if k.is_empty() {
+                continue;
+            }
+            by_key.entry(k).or_insert(r);
         }
 
         for rec in &batch.records {
-            let day = rec
-                .get(&date_field)
+            let key = rec
+                .get(&key_field)
                 .map(|v| v.to_display_string())
                 .unwrap_or_default();
-            if day.is_empty() {
+            if key.is_empty() {
                 res.skipped += 1;
                 continue;
             }
-            match by_date.get(&day).cloned() {
+            match by_key.get(&key).cloned() {
                 None => {
                     let created = s.create(view, rec.clone())?;
                     let id = created
@@ -86,7 +111,7 @@ pub fn ingest(
                         written: created.clone(),
                         created: true,
                     })?;
-                    by_date.insert(day, created);
+                    by_key.insert(key, created);
                     res.created += 1;
                 }
                 Some(existing) => {
@@ -153,13 +178,13 @@ pub fn ingest(
                         written,
                         created: prov.as_ref().is_some_and(|p| p.created),
                     })?;
-                    by_date.insert(day, updated);
+                    by_key.insert(key, updated);
                     res.updated += 1;
                 }
             }
         }
 
-        apply_deletions(s, view, batch, &date_field, &mut by_date, &mut res)?;
+        apply_deletions(s, view, batch, &date_field, &mut by_key, &mut res)?;
         Ok(res)
     })
 }
@@ -169,11 +194,14 @@ fn apply_deletions(
     view: &ViewSchema,
     batch: &IngestBatch,
     date_field: &str,
-    by_date: &mut BTreeMap<String, Record>,
+    by_key: &mut BTreeMap<String, Record>,
     res: &mut IngestResult,
 ) -> Result<(), StoreError> {
+    // In match_field mode the index keys are dimension values (e.g. kaya_id),
+    // not dates. deleted_ids unwind for match_field mode lands in the next
+    // task; for now only deleted_dates is processed here (date mode only).
     for day in &batch.deleted_dates {
-        let Some(row) = by_date.get(day).cloned() else {
+        let Some(row) = by_key.get(day).cloned() else {
             continue;
         };
         let id = row.get("id").map(|v| v.to_display_string()).unwrap_or_default();
@@ -191,7 +219,7 @@ fn apply_deletions(
             .all(|f| row.get(f) == prov.written.get(f));
         if prov.created && untouched {
             s.delete(view, &row)?; // tombstone → sync removes the sheet row
-            by_date.remove(day);
+            by_key.remove(day);
             res.deleted += 1;
         } else {
             // Clear only fields still holding the source's value —
@@ -208,7 +236,7 @@ fn apply_deletions(
             }
             if cleared != row {
                 s.update(view, cleared.clone())?;
-                by_date.insert(day.clone(), cleared);
+                by_key.insert(day.clone(), cleared);
                 res.cleared += 1;
             }
         }

@@ -273,3 +273,94 @@ fn deleted_date_without_provenance_is_ignored() {
     assert_eq!((res.deleted, res.cleared), (0, 0));
     assert_eq!(store.list(&view, None).unwrap().len(), 1);
 }
+
+fn climbing_view() -> airledger_engine::ViewSchema {
+    let base = parse_view(
+        "name: climbing\ndatasource: gsheets\ntable: climbing\ndimensions:\n  - { name: id, type: string, expr: id }\n  - { name: kaya_id, type: string, expr: kaya_id }\n  - { name: date, type: date, expr: date }\n  - { name: climb_name, type: string, expr: climb_name }\n  - { name: grade, type: string, expr: grade }\n  - { name: notes, type: string, expr: notes }\n",
+    )
+    .unwrap();
+    let overlay =
+        parse_input_overlay("target: climbing.view.yml\ndate_field: date\n").unwrap();
+    apply_overlay(base, overlay).unwrap()
+}
+
+const ASCENTS_BATCH: &str = r#"{
+  "source": "kaya",
+  "match_field": "kaya_id",
+  "owned_fields": ["kaya_id", "date", "climb_name", "grade"],
+  "fill_if_blank_fields": ["notes"],
+  "records": [
+    {"kaya_id":{"kind":"string","value":"a1"},"date":{"kind":"date","value":"2026-09-14"},"climb_name":{"kind":"string","value":"Moonwalk"},"grade":{"kind":"string","value":"V5"}},
+    {"kaya_id":{"kind":"string","value":"a2"},"date":{"kind":"date","value":"2026-09-14"},"climb_name":{"kind":"string","value":"Slab City"},"grade":{"kind":"string","value":"V3"}}
+  ]
+}"#;
+
+#[test]
+fn match_field_creates_multiple_rows_on_one_day() {
+    let store = temp_store("mf-create");
+    let view = climbing_view();
+    let res = ingest(&store, &view, &batch(ASCENTS_BATCH)).unwrap();
+    assert_eq!((res.created, res.updated, res.skipped), (2, 0, 0));
+    assert_eq!(store.list(&view, None).unwrap().len(), 2, "same day, two rows");
+}
+
+#[test]
+fn match_field_replay_is_noop() {
+    let store = temp_store("mf-replay");
+    let view = climbing_view();
+    ingest(&store, &view, &batch(ASCENTS_BATCH)).unwrap();
+    let res = ingest(&store, &view, &batch(ASCENTS_BATCH)).unwrap();
+    assert_eq!((res.created, res.updated, res.unchanged), (0, 0, 2));
+}
+
+#[test]
+fn match_field_upserts_by_id_even_when_date_changes() {
+    let store = temp_store("mf-upsert");
+    let view = climbing_view();
+    ingest(&store, &view, &batch(ASCENTS_BATCH)).unwrap();
+    // Kaya revises a2: new grade AND moved to another day. Build the
+    // revised batch by editing a2's record fields.
+    let revised = ASCENTS_BATCH
+        .replace("\"V3\"", "\"V4\"")
+        .replace(
+            "{\"kaya_id\":{\"kind\":\"string\",\"value\":\"a2\"},\"date\":{\"kind\":\"date\",\"value\":\"2026-09-14\"}",
+            "{\"kaya_id\":{\"kind\":\"string\",\"value\":\"a2\"},\"date\":{\"kind\":\"date\",\"value\":\"2026-09-15\"}",
+        );
+    let res = ingest(&store, &view, &batch(&revised)).unwrap();
+    assert_eq!((res.created, res.updated, res.unchanged), (0, 1, 1));
+    let rows = store.list(&view, None).unwrap();
+    assert_eq!(rows.len(), 2, "revision matched by id, no duplicate row");
+}
+
+#[test]
+fn match_field_leaves_manual_rows_alone() {
+    let store = temp_store("mf-manual");
+    let view = climbing_view();
+    // Hand-entered row, same day, no kaya_id.
+    let mut manual = std::collections::BTreeMap::new();
+    manual.insert(
+        "date".to_string(),
+        CellValue::Date(chrono::NaiveDate::from_ymd_opt(2026, 9, 14).unwrap()),
+    );
+    manual.insert("climb_name".to_string(), CellValue::String("Project X".into()));
+    store.create(&view, manual).unwrap();
+
+    let res = ingest(&store, &view, &batch(ASCENTS_BATCH)).unwrap();
+    assert_eq!(res.created, 2, "manual row never matches; batch rows created fresh");
+    let rows = store.list(&view, None).unwrap();
+    assert_eq!(rows.len(), 3);
+    assert!(rows.iter().any(|r| r.get("climb_name")
+        == Some(&CellValue::String("Project X".into()))));
+}
+
+#[test]
+fn match_field_record_without_key_is_skipped() {
+    let store = temp_store("mf-nokey");
+    let view = climbing_view();
+    let b = batch(
+        r#"{"source":"kaya","match_field":"kaya_id","records":[{"date":{"kind":"date","value":"2026-09-14"},"grade":{"kind":"string","value":"V1"}}]}"#,
+    );
+    let res = ingest(&store, &view, &b).unwrap();
+    assert_eq!(res.skipped, 1);
+    assert!(store.list(&view, None).unwrap().is_empty());
+}
