@@ -1330,6 +1330,38 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ---
 
+## Task 5 findings — binding amendments to Tasks 6–8
+
+Task 5 verified the contract against `Asherlc/dofek` main (`docs/kaya-api.openapi.yaml`, `packages/kaya-client/src/client.ts` + tests). Where the plan's code blocks below disagree, THESE findings win:
+
+1. **Outdoor location is NOT on the ascent.** No `destination` field exists on
+   ascents — the plan's `kAscentsQuery` would be invalid. Location lives on
+   sessions: `sessionsForUser(user_id, offset, count) { id … destination { id
+   name … } }`, joined via `ascent.session_id`. Amendment: use the verbatim
+   dofek queries for BOTH `ascentsForUser` and `sessionsForUser`; `KayaApi`
+   gains a `sessionsPage()` alongside `ascentsPage()`; `pull()` walks both
+   lists; the transform takes a `destinationBySession` map and sets
+   `location` from it (when the ascent has no gym).
+2. **Verbatim ascent query** (send exactly; ingest simply ignores
+   rating/stiffness/session-metadata we don't map):
+   `query ascentsForUser($user_id: ID!, $offset: Int!, $count: Int!) { ascentsForUser(user_id: $user_id, offset: $offset, count: $count) { id session_id date comment rating stiffness attempts ascent_type { id name } gym { id name address city region country latitude longitude } climb { id name lead climb_type { id name } grade { id name climb_type_group } gym { id name address city region country latitude longitude } } } }`
+3. **climb_type discipline**: `climb.climb_type.name` is plural
+   ("Boulders"/"Routes") — the tracker's boulder/route value comes from
+   `climb.grade.climb_type_group` ("boulder"/"route") when present, falling
+   back to a name prefix match.
+4. **lead** is `false` on boulders (not null): only emit `lead` for
+   non-boulder rows.
+5. **Login/refresh**: response fields confirmed (`token`, top-level
+   `refresh_token`, `user.id` number → coerce to string; refresh returns
+   only a new `token`, refresh_token is not rotated). Success carries
+   `message: "ok"`.
+6. **Date wire format**: ISO 8601 datetime string with `Z`. `kayaDay`'s
+   tolerant parsing stays (cheap insurance).
+7. **Pagination/order**: offset/count, page size 100, stop on short page;
+   sort order remains unverified → the full-walk-every-pull design stands.
+8. Dofek does no 429 handling; our Retry-After handling stays (community
+   rate-limit observations came from betabook).
+
 ## Self-review notes
 
 - **Spec coverage:** engine match_field (§1 → Tasks 1–2), dylib trap (§1 → Task 3), schemas + push trap (§2 → Task 4), API client/auth/pull (§3 → Tasks 5–8), error handling (§4 → Tasks 6 & 8 code), testing (§5 → Tasks 1,2,6,7 + baselines), deploy order (§6 → Tasks 3,4,10 sequence). Sort-order risk resolved via the spec's sanctioned fallback: full walk every pull, no cursor.
