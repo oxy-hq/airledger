@@ -79,6 +79,13 @@ pub struct ViewSchema {
     /// [`RepeatGroup`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_group: Option<RepeatGroup>,
+
+    /// When true the app renders this tracker as browse-only — no entry
+    /// form is shown. Semantics are entirely app-side; the engine just
+    /// carries and round-trips the flag. Defaults to false so old JSON
+    /// (produced by engines that pre-date this key) deserializes cleanly.
+    #[serde(default)]
+    pub read_only: bool,
 }
 
 impl ViewSchema {

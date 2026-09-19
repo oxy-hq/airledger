@@ -32,6 +32,10 @@ pub struct InputOverlay {
     pub groups: BTreeMap<String, BTreeSet<String>>,
     pub top_metric: Option<String>,
     pub repeat_group: Option<RepeatGroup>,
+    /// When true the app renders this tracker as browse-only (no entry
+    /// form). Parsed from the top-level `read_only:` key in the
+    /// `.input.yml`. Defaults to false when absent.
+    pub read_only: bool,
 }
 
 /// Per-dim overlay — input spec + autocomplete samples + show_when +
@@ -115,6 +119,7 @@ pub fn apply_overlay(
     view.top_metric = overlay.top_metric;
     view.has_input_overlay = true;
     view.repeat_group = overlay.repeat_group;
+    view.read_only = overlay.read_only;
 
     Ok(view)
 }

@@ -83,6 +83,7 @@ pub fn parse_view(yaml: &str) -> Result<ViewSchema, ParseError> {
         top_metric: None,
         has_input_overlay: false,
         repeat_group: None,
+        read_only: false,
     })
 }
 

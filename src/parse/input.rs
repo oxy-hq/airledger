@@ -125,6 +125,9 @@ pub fn parse_input_overlay(yaml: &str) -> Result<InputOverlay, ParseError> {
             .and_then(Value::as_mapping)
             .map(parse_repeat_group)
             .transpose()?,
+        read_only: map.get(Value::String("read_only".into()))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
     })
 }
 
