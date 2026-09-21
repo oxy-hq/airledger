@@ -109,6 +109,12 @@ pub enum WidgetType {
     Datetime,
     Dropdown,
     Autocomplete,
+    /// Tri-state boolean toggle for `type: boolean` dims. The value is a
+    /// NULLABLE bool: absent = "not recorded" (blank cell), `true`/`false`
+    /// only when the user explicitly set the toggle. The form must never
+    /// coerce blank to `false` — equipment/technique fields (belted,
+    /// paused, wrist_wraps, knee_sleeves) rely on blank meaning unknown.
+    Switch,
     /// Stopwatch input. Owns a state machine
     /// (idle → running → paused → stopped). Configured via [`ladders`]
     /// and [`stop_targets`] on the parent [`InputSpec`].

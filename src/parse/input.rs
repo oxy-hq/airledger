@@ -264,6 +264,7 @@ fn parse_widget_type(s: &str) -> Result<WidgetType, ParseError> {
         "timer" => WidgetType::Timer,
         "dropdown" => WidgetType::Dropdown,
         "autocomplete" => WidgetType::Autocomplete,
+        "switch" => WidgetType::Switch,
         other => {
             return Err(ParseError::Schema(format!(
                 "Unknown widget type: {other}"
