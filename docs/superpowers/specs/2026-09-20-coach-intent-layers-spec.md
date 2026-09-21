@@ -86,8 +86,9 @@ Per set (main lifts only):
   pct_max    = weight / reference
   tier       = warm_up (<0.80) | moderate (0.80-0.90) | hard (>=0.90)
   working    = effort >= 0.80
-  near_max   = effort >= 0.95
+  near_max   = effort >= 0.95 and reps <= 8
   long_failure_set = reps >= 8 and effort >= 0.95
+Amendment 2026-09-20 (user-approved): near_max requires reps <= 8 — AMRAP long-failure sets must not silence NEAR_MAX_LOW; the 2025 backtest showed effort>=0.95 alone lets them mask missing heavy work. long_failure_set unchanged.
 
 Per ISO week (Mon-Sun): sessions (distinct dates with a main-lift set),
 sets_total, working_sets, hard_sets, near_max_sets, long_failure_sets,
