@@ -57,6 +57,12 @@ pub struct InputSpec {
     #[serde(default = "ret_true")]
     pub editable: bool,
 
+    /// `false` opts the field out of exercise-history autofill in the
+    /// entry form (subjective per-set fields like rpe/notes must never
+    /// carry over from a previous session). Defaults to `true`.
+    #[serde(default = "ret_true")]
+    pub autofill: bool,
+
     /// Renders a clock-icon suffix that stamps the current time
     /// (formatted `h:mm:ss a`) when tapped. Used for start_time-style
     /// fields.

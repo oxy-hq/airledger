@@ -32,6 +32,7 @@ const FORM_SPEC_KEYS: &[&str] = &[
     "options",
     "placeholder",
     "editable",
+    "autofill",
     "now_button",
     "history",
     "ladders",
@@ -230,6 +231,10 @@ fn parse_input_spec(node: &Mapping) -> Result<InputSpec, ParseError> {
             .map(String::from),
         editable: node
             .get(Value::String("editable".into()))
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
+        autofill: node
+            .get(Value::String("autofill".into()))
             .and_then(Value::as_bool)
             .unwrap_or(true),
         now_button: node
