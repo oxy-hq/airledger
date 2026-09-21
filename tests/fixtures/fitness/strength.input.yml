@@ -423,6 +423,32 @@ fields:
     show_when:
       exercise:
         not_in_group: [isometric, timed, mobility]
+  # Equipment/technique flags — tri-state switches, live-shape mirror of
+  # airledger-fitness (blank = not recorded; autofill opt-out).
+  paused:
+    widget: switch
+    autofill: false
+    show_when:
+      exercise:
+        in: [Flat Barbell Bench Press, Barbell Squat]
+  belted:
+    widget: switch
+    autofill: false
+    show_when:
+      exercise:
+        in: [Barbell Squat, Barbell Deadlift]
+  wrist_wraps:
+    widget: switch
+    autofill: false
+    show_when:
+      exercise:
+        in: [Flat Barbell Bench Press, Overhead Press, Barbell Standing Military Press]
+  knee_sleeves:
+    widget: switch
+    autofill: false
+    show_when:
+      exercise:
+        in: [Barbell Squat, Barbell Deadlift]
   notes:
     widget: longtext
 

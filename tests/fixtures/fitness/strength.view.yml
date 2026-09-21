@@ -15,6 +15,11 @@ dimensions:
   - { name: start_time, type: string, expr: Start Time, description: Time of day (blank = planned). Tap the clock to stamp now. }
   - { name: end_time, type: string, expr: End Time, description: "Time the set ended (useful for timed practice like handstand). Tap the clock to stamp now." }
   - { name: rpe, type: number, expr: RPE, description: Rate of Perceived Exertion (1-10) }
+  # Equipment/technique flags — tri-state booleans (blank = not recorded).
+  - { name: paused, type: boolean, expr: Paused, description: "Paused reps (dead stop). Blank = not recorded." }
+  - { name: belted, type: boolean, expr: Belted, description: "Lifting belt worn. Blank = not recorded." }
+  - { name: wrist_wraps, type: boolean, expr: Wrist Wraps, description: "Wrist wraps worn (pressing)." }
+  - { name: knee_sleeves, type: boolean, expr: Knee Sleeves, description: "Knee sleeves worn (squat/deadlift)." }
   - { name: notes, type: string, expr: Notes }
 measures:
   - { name: set_count, type: count }
