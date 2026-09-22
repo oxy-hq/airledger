@@ -177,6 +177,64 @@ plannable:
 }
 
 #[test]
+fn list_filters_by_date_when_date_field_is_datetime() {
+    // meals-style view: date_field points at a DATETIME dimension
+    // (`eaten_at`, values like 2026-09-22T08:15:00 from the Health
+    // Connect ingest). on_date must match on the calendar date.
+    let store = temp_store("datetimefilter");
+    let base = parse_view(
+        r#"
+name: meals
+datasource: gsheets
+table: meals
+dimensions:
+  - { name: id, type: string, expr: id }
+  - { name: eaten_at, type: datetime, expr: eaten_at }
+  - { name: meal, type: string, expr: meal }
+"#,
+    )
+    .unwrap();
+    let overlay = airledger_engine::parse_input_overlay(
+        r#"
+target: meals.view.yml
+date_field: eaten_at
+"#,
+    )
+    .unwrap();
+    let view = airledger_engine::apply_overlay(base, overlay).unwrap();
+    let dt = |s: &str| {
+        CellValue::DateTime(
+            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").unwrap(),
+        )
+    };
+    store
+        .create(
+            &view,
+            rec(&[("eaten_at", dt("2026-09-22T08:15:00")), ("meal", CellValue::String("oats".into()))]),
+        )
+        .unwrap();
+    store
+        .create(
+            &view,
+            rec(&[("eaten_at", dt("2026-09-22T19:30:00")), ("meal", CellValue::String("salmon".into()))]),
+        )
+        .unwrap();
+    store
+        .create(
+            &view,
+            rec(&[("eaten_at", dt("2026-09-21T12:00:00")), ("meal", CellValue::String("sandwich".into()))]),
+        )
+        .unwrap();
+
+    let on = chrono::NaiveDate::parse_from_str("2026-09-22", "%Y-%m-%d").unwrap();
+    let listed = store.list(&view, Some(on)).unwrap();
+    assert_eq!(listed.len(), 2, "datetime date_field must match by calendar date");
+    // Other days stay excluded.
+    let off = chrono::NaiveDate::parse_from_str("2026-09-23", "%Y-%m-%d").unwrap();
+    assert!(store.list(&view, Some(off)).unwrap().is_empty());
+}
+
+#[test]
 fn provenance_round_trip_and_remove() {
     let store = temp_store("prov");
     use airledger_engine::store::Provenance;

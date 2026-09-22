@@ -23,9 +23,16 @@ pub fn filter_and_sort(
         return records;
     };
 
+    // Match on the CALENDAR DATE: a date-typed field must equal
+    // `on_date` exactly; a datetime-typed field (e.g. meals'
+    // `eaten_at`) matches when its date component does.
     let mut filtered: Vec<Record> = records
         .into_iter()
-        .filter(|r| matches!(r.get(&date_field), Some(CellValue::Date(d)) if *d == on_date))
+        .filter(|r| match r.get(&date_field) {
+            Some(CellValue::Date(d)) => *d == on_date,
+            Some(CellValue::DateTime(dt)) => dt.date() == on_date,
+            _ => false,
+        })
         .collect();
 
     let Some(log_field) = view.plannable.as_ref().map(|p| p.log_field.clone()) else {
