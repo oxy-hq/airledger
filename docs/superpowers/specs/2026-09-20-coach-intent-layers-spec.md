@@ -101,6 +101,19 @@ bw_3wk_change (this Sunday minus three Sundays ago), week_type,
 deviations (section 4). Exposed as program_status weekly rows and, for
 current + previous week, inside get_coach_context.
 
+Amendment 2026-09-22 (user): the ACCOUNTING week's start day is
+configurable via program.yaml `week_start` (v7: saturday — weekend
+sessions read as getting ahead of the coming week, not catching up the
+old one). Scope: weekly rollup keying only — the metrics above, flag
+weeks, the app's live this-week strip, the planner's generation window,
+and the weekly Wilks stat all key by weekStartOf(date, week_start);
+"Sunday" in the bw definitions reads as "the week's last day". Program
+STRUCTURE (block boundaries, week_in_block, week_type) stays
+Monday-anchored; accounting weeks resolve onto it via the first Monday
+on/after the week start (anchorMondayOf — the Monday owning the week's
+Mon-Fri). The §6 backtest stays pinned to Monday weeks: its acceptance
+numbers were validated against Monday keying and remain the gate.
+
 ### 2.6 Flags (weekly, Sunday night or on demand)
 
 Each rule: id, condition, action, scope (week types). Seed:
