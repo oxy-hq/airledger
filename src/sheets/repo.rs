@@ -19,6 +19,23 @@ use super::SheetsError;
 
 const RETRY_ATTEMPTS: u32 = 4;
 const RETRY_BASE_MS: u64 = 300;
+/// Ceiling for a single 429 backoff sleep. Google's per-minute quota
+/// windows reset within a minute; anything longer just stalls the
+/// sync thread for no benefit — the scheduler retries the whole sync.
+const RATE_LIMIT_SLEEP_CAP_MS: u64 = 15_000;
+/// Base for the 429 exponential backoff (no Retry-After header).
+const RATE_LIMIT_BASE_MS: u64 = 2_000;
+
+/// How long to sleep before retrying a 429, attempt is 1-based.
+/// Honors the server's Retry-After (seconds) when present; falls back
+/// to capped exponential backoff. Pure — unit-tested in sheets_unit.
+pub fn rate_limit_backoff_ms(attempt: u32, retry_after_s: Option<u64>) -> u64 {
+    let ms = match retry_after_s {
+        Some(s) => s.saturating_mul(1000),
+        None => RATE_LIMIT_BASE_MS.saturating_mul(1 << (attempt - 1).min(4)),
+    };
+    ms.min(RATE_LIMIT_SLEEP_CAP_MS)
+}
 
 /// Key set on records loaded from the sheet, carrying their zero-based
 /// data row index so `update` / `delete` can find them without an id.
@@ -99,8 +116,12 @@ impl SheetsRepository {
     /// Re-callable HTTP wrapper. Retries on transport errors (matches
     /// the Dart `_RetryingClient`'s "only retry exceptions, never
     /// retry response codes" rule, so non-idempotent writes stay safe)
-    /// AND treats a 401 from the Sheets API as "token might be stale"
-    /// — clears the cached token and retries once with a fresh one.
+    /// AND treats two response codes specially:
+    /// - 401 with a cached token → "token might be stale": clears the
+    ///   cached token and retries once with a fresh one;
+    /// - 429 → rate limited, which means the request was NOT executed
+    ///   (safe to retry even for writes): sleeps per the server's
+    ///   Retry-After, or capped exponential backoff, then retries.
     fn api<R, F>(&self, f: F) -> Result<R, SheetsError>
     where
         F: Fn(&Api) -> Result<R, SheetsError>,
@@ -126,6 +147,15 @@ impl SheetsRepository {
                         *self.token.borrow_mut() = None;
                         auth_retried = true;
                         continue;
+                    }
+                    if let SheetsError::Api { status: 429, retry_after, .. } = &e {
+                        if attempt < RETRY_ATTEMPTS {
+                            std::thread::sleep(Duration::from_millis(
+                                rate_limit_backoff_ms(attempt, *retry_after),
+                            ));
+                            continue;
+                        }
+                        return Err(e);
                     }
                     if attempt >= RETRY_ATTEMPTS || !is_transient(&e) {
                         return Err(e);
@@ -352,6 +382,69 @@ impl SheetsRepository {
         let range = format!("'{}'!A{}", view.table, row_index + 2);
         self.api(|api| api.update_values(&spreadsheet_id, &range, row.clone()))?;
         Ok(())
+    }
+
+    /// Update MANY existing records in two API calls total: one
+    /// `values:batchGet` (to preserve sheet columns the schema doesn't
+    /// know about) + one `values:batchUpdate`. The per-row [`update`]
+    /// costs a read AND a write per record — at the 60-requests/min
+    /// quota a few dozen dirty rows per sync was enough to 429.
+    ///
+    /// Every record must carry `__row` (the sync engine always sets
+    /// it). All-or-nothing: on error nothing should be assumed
+    /// written.
+    pub fn update_many(
+        &self,
+        view: &ViewSchema,
+        records: &[Record],
+    ) -> Result<(), SheetsError> {
+        if records.is_empty() {
+            return Ok(());
+        }
+        let spreadsheet_id = self.spreadsheet_id_for(view);
+        let headers = self.ensure_headers(view)?;
+
+        let mut row_indexes = Vec::with_capacity(records.len());
+        for record in records {
+            match record.get(ROW_INDEX_KEY) {
+                Some(CellValue::Int(idx)) => row_indexes.push(*idx as usize),
+                _ => return Err(SheetsError::NoRowRef),
+            }
+        }
+
+        // One read for every existing row (unknown-column preservation).
+        let ranges: Vec<String> = row_indexes
+            .iter()
+            .map(|i| format!("'{}'!{}:{}", view.table, i + 2, i + 2))
+            .collect();
+        let existing_rows = self.api(|api| api.batch_get_values(&spreadsheet_id, &ranges))?;
+
+        let mut data: Vec<(String, Vec<Value>)> = Vec::with_capacity(records.len());
+        for (k, record) in records.iter().enumerate() {
+            let existing = existing_rows
+                .get(k)
+                .and_then(|vr| vr.values.first())
+                .cloned()
+                .unwrap_or_default();
+            let row: Vec<Value> = headers
+                .iter()
+                .enumerate()
+                .map(|(i, h)| {
+                    if let Some(dim) = view.dimension_by_expr(h) {
+                        let raw = record
+                            .get(&dim.name)
+                            .cloned()
+                            .unwrap_or(CellValue::Null);
+                        cell_to_json(encode(dim.kind, &raw))
+                    } else {
+                        existing.get(i).cloned().unwrap_or(Value::String(String::new()))
+                    }
+                })
+                .collect();
+            data.push((format!("'{}'!A{}", view.table, row_indexes[k] + 2), row));
+        }
+
+        self.api(|api| api.batch_update_values(&spreadsheet_id, &data))
     }
 
     /// Delete a record's sheet row. Silently no-ops if the row can't

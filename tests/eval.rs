@@ -55,6 +55,35 @@ fn codec_date_emits_iso() {
 }
 
 #[test]
+fn codec_datetime_survives_native_cell_round_trip() {
+    // THE 2026-09-21 sync-storm bug. The engine pushes datetimes as
+    // ISO-T strings ("2026-09-16T10:00:00") with valueInputOption
+    // USER_ENTERED — Sheets parses that into a NATIVE datetime cell.
+    // The next pull (FORMATTED_VALUE) renders it back SPACE-separated
+    // ("2026-09-16 10:00:00"). decode must parse that form, or every
+    // datetime becomes Null on pull → TakeRemote corrupts the local
+    // row → the next source ingest re-dirties it → push → forever
+    // (429 storm at the write quota).
+    use airledger_engine::schema::view::DimensionType;
+    let dt = NaiveDate::from_ymd_opt(2026, 9, 16)
+        .unwrap()
+        .and_hms_opt(10, 0, 0)
+        .unwrap();
+    // What encode writes:
+    let enc = encode(DimensionType::Datetime, &CellValue::DateTime(dt));
+    assert_eq!(enc, CellValue::String("2026-09-16T10:00:00".into()));
+    // What Sheets hands back for that cell after USER_ENTERED parsing:
+    let dec = decode(DimensionType::Datetime, "2026-09-16 10:00:00");
+    assert_eq!(dec, CellValue::DateTime(dt), "space-separated render must decode");
+    // Seconds-less render (Sheets drops :00 seconds under some formats).
+    let dec = decode(DimensionType::Datetime, "2026-09-16 10:00");
+    assert_eq!(dec, CellValue::DateTime(dt));
+    // The T form keeps working.
+    let dec = decode(DimensionType::Datetime, "2026-09-16T10:00:00");
+    assert_eq!(dec, CellValue::DateTime(dt));
+}
+
+#[test]
 fn codec_bool() {
     use airledger_engine::schema::view::DimensionType;
     assert_eq!(decode(DimensionType::Boolean, "true"), CellValue::Bool(true));

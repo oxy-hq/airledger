@@ -89,6 +89,39 @@ fn replay_is_a_no_op_and_does_not_dirty() {
 }
 
 #[test]
+fn numerically_equal_int_and_float_do_not_re_dirty() {
+    // Second half of the 2026-09-21 sync storm: the sheet stores "26"
+    // which decodes as Int(26), but sources send {"kind":"float",
+    // "value":26.0}. If the ingest compare treats those as different,
+    // every source pull re-dirties every integral-valued row and the
+    // sync re-pushes it — forever.
+    let store = temp_store("intfloat");
+    let view = weight_view();
+    ingest(&store, &view, &batch(DAY_BATCH)).unwrap();
+
+    // Simulate the sheet round-trip: sync pulled the row back and the
+    // integral value now sits locally as an Int.
+    let mut row = store.list(&view, None).unwrap().remove(0);
+    row.insert("body_fat_withing".to_string(), CellValue::Int(18));
+    let id = row.get("id").unwrap().to_display_string();
+    store.mark_synced(&view.name, &id, &row, Some(0)).unwrap();
+    assert_eq!(store.pending_count().unwrap(), 0);
+
+    // Source replays the same measurement as a float.
+    let replay = DAY_BATCH.replace("18.2", "18.0");
+    let res = ingest(&store, &view, &batch(&replay)).unwrap();
+    assert_eq!(
+        (res.created, res.updated, res.unchanged),
+        (0, 0, 1),
+        "Int(18) vs Float(18.0) must compare equal"
+    );
+    assert_eq!(store.pending_count().unwrap(), 0, "must not re-dirty");
+    // And the local representation must be left alone (no rep flapping).
+    let row = &store.list(&view, None).unwrap()[0];
+    assert_eq!(row.get("body_fat_withing"), Some(&CellValue::Int(18)));
+}
+
+#[test]
 fn owned_field_updates_when_source_value_changes() {
     let store = temp_store("owned");
     let view = weight_view();

@@ -30,6 +30,23 @@ fn service_account_rejects_malformed_json() {
 }
 
 #[test]
+fn rate_limit_backoff_honors_retry_after_and_caps() {
+    use airledger_engine::sheets::rate_limit_backoff_ms;
+    // Server said 3s → 3000ms regardless of attempt.
+    assert_eq!(rate_limit_backoff_ms(1, Some(3)), 3000);
+    assert_eq!(rate_limit_backoff_ms(3, Some(3)), 3000);
+    // Server said 60s → capped at 15s (per-minute windows reset soon;
+    // the scheduler retries the whole sync anyway).
+    assert_eq!(rate_limit_backoff_ms(1, Some(60)), 15_000);
+    // No header → exponential from 2s, capped.
+    assert_eq!(rate_limit_backoff_ms(1, None), 2000);
+    assert_eq!(rate_limit_backoff_ms(2, None), 4000);
+    assert_eq!(rate_limit_backoff_ms(3, None), 8000);
+    assert_eq!(rate_limit_backoff_ms(4, None), 15_000);
+    assert_eq!(rate_limit_backoff_ms(10, None), 15_000);
+}
+
+#[test]
 fn service_account_rejects_missing_required_field() {
     // Missing client_email
     let json = r#"{

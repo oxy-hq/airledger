@@ -100,11 +100,24 @@ fn parse_date(s: &str) -> Option<CellValue> {
 }
 
 fn parse_datetime(s: &str) -> Option<CellValue> {
-    if let Ok(dt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
-        return Some(CellValue::DateTime(dt));
-    }
-    if let Ok(dt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f") {
-        return Some(CellValue::DateTime(dt));
+    // ISO-T forms (what encode writes) AND space-separated forms.
+    // The space forms are NOT optional: push writes ISO-T under
+    // valueInputOption USER_ENTERED, Sheets parses that into a native
+    // datetime cell, and the next FORMATTED_VALUE read renders it
+    // "2026-09-16 10:00:00". Failing to parse that turned every
+    // pulled datetime into Null — which made sources re-dirty their
+    // rows every pull and re-push them every sync, forever (the
+    // 2026-09-21 Sheets-429 storm).
+    for fmt in [
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S%.f",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M:%S%.f",
+        "%Y-%m-%d %H:%M",
+    ] {
+        if let Ok(dt) = NaiveDateTime::parse_from_str(s, fmt) {
+            return Some(CellValue::DateTime(dt));
+        }
     }
     // Fall back to date-only — Sheets sometimes returns the date
     // portion when the cell was originally written as date.

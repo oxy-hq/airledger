@@ -44,6 +44,20 @@ impl CellValue {
         }
     }
 
+    /// Value equality across wire representations. The Sheets round-
+    /// trip is lossy about NUMERIC SHAPE — "26" decodes as `Int(26)`
+    /// while sources send `Float(26.0)` — so anything that decides
+    /// "did this value actually change?" (ingest merges, provenance
+    /// untouched-checks) must use this, not `==`. Everything else
+    /// falls back to plain equality.
+    pub fn equivalent(&self, other: &CellValue) -> bool {
+        match (self, other) {
+            (CellValue::Int(a), CellValue::Float(b))
+            | (CellValue::Float(b), CellValue::Int(a)) => *a as f64 == *b,
+            _ => self == other,
+        }
+    }
+
     /// Stringy display — what the value looks like when rendered as a
     /// plain string (titles, subtitles, history rows). Mirrors how the
     /// Dart side `.toString()`s `Object?` values.
@@ -63,3 +77,23 @@ impl CellValue {
 /// One record — a row in a sheet, a fan-out batch entry, an entry the
 /// form is composing. Mirrors `Map<String, Object?>` on the Dart side.
 pub type Record = std::collections::BTreeMap<String, CellValue>;
+
+/// Record equality across wire representations — the record-level
+/// counterpart of [`CellValue::equivalent`]. Two extra tolerances the
+/// sheet round-trip demands:
+/// - numeric shape (`Int(26)` vs `Float(26.0)`),
+/// - a MISSING key equals an explicit `Null` (pulled rows carry a key
+///   for every mapped column, blank cells included; locally-composed
+///   rows simply omit fields that were never set).
+///
+/// The sync merge uses this to decide "did the remote actually
+/// change?" — plain `==` manufactured phantom remote edits after
+/// every push, and phantom diffs are what fed the 429 push storm.
+pub fn records_equivalent(a: &Record, b: &Record) -> bool {
+    let keys: std::collections::BTreeSet<&String> = a.keys().chain(b.keys()).collect();
+    keys.into_iter().all(|k| {
+        let av = a.get(k).unwrap_or(&CellValue::Null);
+        let bv = b.get(k).unwrap_or(&CellValue::Null);
+        av.equivalent(bv)
+    })
+}

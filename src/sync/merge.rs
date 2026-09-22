@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::store::LocalRow;
-use crate::value::Record;
+use crate::value::{records_equivalent, Record};
 
 /// One decoded remote row with its zero-based data row index.
 #[derive(Debug, Clone)]
@@ -68,7 +68,7 @@ pub fn merge(local: &[LocalRow], remote: &[RemoteRow]) -> MergePlan {
             // Divergent data: app wins, overwrite in place. Either
             // way, never insert a duplicate row.
             (None, Some(r)) => {
-                if r.data == l.data {
+                if records_equivalent(&r.data, &l.data) {
                     plan.actions.push(Action::TakeRemote {
                         id: l.id.clone(),
                         data: r.data.clone(),
@@ -83,7 +83,10 @@ pub fn merge(local: &[LocalRow], remote: &[RemoteRow]) -> MergePlan {
                 }
             }
             (Some(base), Some(r)) => {
-                let remote_changed = r.data != *base;
+                // Representation-tolerant: `==` would see a phantom
+                // remote edit whenever the sheet reshaped a value
+                // (Float(26.0) → "26" → Int(26), missing key → Null).
+                let remote_changed = !records_equivalent(&r.data, base);
                 match (l.dirty, remote_changed) {
                     (false, false) => {}
                     (false, true) => plan.actions.push(Action::TakeRemote {

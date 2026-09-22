@@ -15,6 +15,18 @@ pub trait SyncRemote {
     fn pull(&self, view: &ViewSchema) -> Result<Vec<Record>, SheetsError>;
     /// Overwrite the row at `record["__row"]` with `record`.
     fn push_update(&self, view: &ViewSchema, record: &Record) -> Result<(), SheetsError>;
+    /// Overwrite many rows (each carrying `__row`). All-or-nothing:
+    /// the caller commits either every record or none. The default
+    /// impl loops [`push_update`]; `SheetsRepository` overrides it
+    /// with a two-request `values:batchGet` + `values:batchUpdate`
+    /// so N dirty rows cost 2 quota units instead of 2N (the per-row
+    /// shape was what turned a dirty backlog into a 429 storm).
+    fn push_updates(&self, view: &ViewSchema, records: &[Record]) -> Result<(), SheetsError> {
+        for r in records {
+            self.push_update(view, r)?;
+        }
+        Ok(())
+    }
     /// Insert `record` at the top of the sheet (data row 0).
     fn push_insert(&self, view: &ViewSchema, record: &Record) -> Result<(), SheetsError>;
     fn push_delete(&self, view: &ViewSchema, row_index: usize) -> Result<(), SheetsError>;
@@ -29,6 +41,9 @@ impl SyncRemote for SheetsRepository {
     }
     fn push_update(&self, view: &ViewSchema, record: &Record) -> Result<(), SheetsError> {
         self.update(view, record.clone())
+    }
+    fn push_updates(&self, view: &ViewSchema, records: &[Record]) -> Result<(), SheetsError> {
+        self.update_many(view, records)
     }
     fn push_insert(&self, view: &ViewSchema, record: &Record) -> Result<(), SheetsError> {
         let mut r = record.clone();
@@ -168,25 +183,36 @@ fn sync_one_inner(
 
     let mut push_err: Option<String> = None;
     'push: {
-        for a in updates {
-            let Action::PushUpdate { id, row_index } = a else {
-                unreachable!()
-            };
-            let l = local_by_id
-                .get(id.as_str())
-                .expect("merge only names local ids");
-            let mut rec = l.data.clone();
-            rec.insert(ROW_INDEX_KEY.to_string(), CellValue::Int(row_index as i64));
-            if let Err(e) = remote.push_update(view, &rec) {
+        // Updates go out as ONE batched call (2 quota units total on
+        // the real repo, vs 2 per row) — all-or-nothing, so the
+        // commits queue only after the whole batch lands.
+        if !updates.is_empty() {
+            let mut recs: Vec<Record> = Vec::with_capacity(updates.len());
+            let mut metas: Vec<(String, Record, i64)> = Vec::with_capacity(updates.len());
+            for a in updates {
+                let Action::PushUpdate { id, row_index } = a else {
+                    unreachable!()
+                };
+                let l = local_by_id
+                    .get(id.as_str())
+                    .expect("merge only names local ids");
+                let mut rec = l.data.clone();
+                rec.insert(ROW_INDEX_KEY.to_string(), CellValue::Int(row_index as i64));
+                recs.push(rec);
+                metas.push((id, l.data.clone(), row_index as i64));
+            }
+            if let Err(e) = remote.push_updates(view, &recs) {
                 push_err = Some(format!("push update: {e}"));
                 break 'push;
             }
-            commits.push(CommitOp::MarkSynced {
-                id,
-                data: l.data.clone(),
-                sort_key: Some(row_index as i64),
-                pulled: false,
-            });
+            for (id, data, sort_key) in metas {
+                commits.push(CommitOp::MarkSynced {
+                    id,
+                    data,
+                    sort_key: Some(sort_key),
+                    pulled: false,
+                });
+            }
         }
         for a in deletes {
             let Action::DeleteRemote { id, row_index } = a else {

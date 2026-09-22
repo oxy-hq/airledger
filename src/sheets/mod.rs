@@ -18,7 +18,7 @@ use std::error::Error as StdError;
 use thiserror::Error;
 
 pub use auth::ServiceAccount;
-pub use repo::{shift_row_indexes, SheetsRepository, ROW_INDEX_KEY};
+pub use repo::{rate_limit_backoff_ms, shift_row_indexes, SheetsRepository, ROW_INDEX_KEY};
 
 /// All errors the sheets module produces.
 #[derive(Error, Debug)]
@@ -36,7 +36,13 @@ pub enum SheetsError {
     #[error("http: {0}")]
     Http(#[from] HttpError),
     #[error("sheets api {status}: {body}")]
-    Api { status: u16, body: String },
+    Api {
+        status: u16,
+        body: String,
+        /// Parsed `Retry-After` header (seconds) when the server sent
+        /// one — 429s carry it, and the retry loop honors it.
+        retry_after: Option<u64>,
+    },
     #[error("cannot resolve row: no __row index and no id on record")]
     NoRowRef,
     #[error("no sheet tab named \"{0}\"")]

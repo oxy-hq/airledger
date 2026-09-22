@@ -129,9 +129,16 @@ pub fn ingest(
                         s.provenance_get(&view.name, &existing_id, &batch.source)?;
                     let mut updated = existing.clone();
                     let mut wrote: Vec<String> = Vec::new();
+                    // NOTE on comparisons: `equivalent`, not `==`. The
+                    // sheet round-trip decodes "26" as Int(26) while
+                    // sources send Float(26.0); treating those as
+                    // different re-dirtied every integral-valued row
+                    // on every source pull → an endless push storm
+                    // (Sheets 429, 2026-09-21). When values are
+                    // equivalent the local representation is kept.
                     for f in &batch.owned_fields {
                         if let Some(v) = rec.get(f) {
-                            if updated.get(f) != Some(v) {
+                            if !updated.get(f).is_some_and(|cur| cur.equivalent(v)) {
                                 updated.insert(f.clone(), v.clone());
                             }
                             wrote.push(f.clone());
@@ -145,10 +152,13 @@ pub fn ingest(
                             // the source's own value, not a user edit.
                             let sources_own = prov.as_ref().is_some_and(|p| {
                                 p.fields.iter().any(|pf| pf == f)
-                                    && p.written.get(f) == updated.get(f)
+                                    && match (p.written.get(f), updated.get(f)) {
+                                        (Some(a), Some(b)) => a.equivalent(b),
+                                        (a, b) => a == b,
+                                    }
                             });
                             if blank || sources_own {
-                                if updated.get(f) != Some(v) {
+                                if !updated.get(f).is_some_and(|cur| cur.equivalent(v)) {
                                     updated.insert(f.clone(), v.clone());
                                 }
                                 wrote.push(f.clone());
@@ -226,11 +236,14 @@ fn apply_deletions(
             continue; // the source never touched this row
         };
         // "Untouched since": every field the source wrote still holds
-        // the value the source wrote.
-        let untouched = prov
-            .fields
-            .iter()
-            .all(|f| row.get(f) == prov.written.get(f));
+        // the value the source wrote. Representation-tolerant — the
+        // sheet round-trip may have reshaped Float(18.0) into Int(18).
+        let untouched = prov.fields.iter().all(|f| {
+            match (row.get(f), prov.written.get(f)) {
+                (Some(a), Some(b)) => a.equivalent(b),
+                (a, b) => a == b,
+            }
+        });
         if prov.created && untouched {
             s.delete(view, &row)?; // tombstone → sync removes the sheet row
             by_key.remove(key);
@@ -244,7 +257,11 @@ fn apply_deletions(
                 if f == date_field || f == key_field {
                     continue; // row identity fields survive the clear
                 }
-                if row.get(f) == prov.written.get(f) {
+                let still_sources = match (row.get(f), prov.written.get(f)) {
+                    (Some(a), Some(b)) => a.equivalent(b),
+                    (a, b) => a == b,
+                };
+                if still_sources {
                     cleared.insert(f.clone(), CellValue::Null);
                 }
             }
