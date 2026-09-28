@@ -68,6 +68,15 @@ adherence enum(as_planned, reduced, substituted, skipped, extra);
 cause enum(fatigue, pain, time, illness, travel, choice, other);
 readiness int 1-5. Never required.
 
+Amendment 2026-09-27 (recomp tracking spec,
+airledger-fitness/coach/recomp-tracking-spec.md): daily_notes gains the
+daily RECOVERY subjectives — sleep_hours (number), sleep_quality (1-5),
+fatigue (1-5), soreness (1-5), pain (free text; OUTRANKS numeric
+programming targets as a coaching signal), readiness (1-5). All
+optional; the free-text note stays primary. They feed the generated
+Sunday weekly review (ledger lib/services/recomp_review.dart) and the
+home dashboard's recomp RECOVERY row.
+
 ### 2.5 Derived metrics (nightly + on every log_rows)
 
 Main lifts by EXACT logged exercise name:
