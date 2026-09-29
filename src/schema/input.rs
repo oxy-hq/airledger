@@ -115,6 +115,14 @@ pub enum WidgetType {
     /// coerce blank to `false` — equipment/technique fields (belted,
     /// paused, wrist_wraps, knee_sleeves) rely on blank meaning unknown.
     Switch,
+    /// Video-attach affordance for `type: string` dims. The dim's value
+    /// is a URL (Google Photos deep link) to a video the user attached
+    /// via the Photos Picker; the app writes it — the widget renders an
+    /// attach button, never a free-text input. A sibling dim named
+    /// `<field minus "_url">_media_id` (e.g. `video_url` →
+    /// `video_media_id`), when present, receives the picker's persistent
+    /// media-item id for later re-fetch. Blank = no video attached.
+    Video,
     /// Stopwatch input. Owns a state machine
     /// (idle → running → paused → stopped). Configured via [`ladders`]
     /// and [`stop_targets`] on the parent [`InputSpec`].
